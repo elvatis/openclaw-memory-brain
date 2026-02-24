@@ -76,9 +76,11 @@ export default function register(api: any) {
     name: "remember-brain",
     description: "Save a personal brain memory item (explicit capture)",
     usage: "/remember-brain <text>",
-    run: async (ctx: any) => {
-      const text = (ctx?.argsText ?? "").trim();
-      if (!text) return { ok: true, message: "Usage: /remember-brain <text>" };
+    requireAuth: false,
+    acceptsArgs: true,
+    handler: async (ctx: any) => {
+      const text = String(ctx?.args ?? "").trim();
+      if (!text) return { text: "Usage: /remember-brain <text>" };
 
       const r = redactSecrets ? redactor.redact(text) : { redactedText: text, hadSecrets: false, matches: [] };
       const item: MemoryItem = {
@@ -98,7 +100,7 @@ export default function register(api: any) {
 
       await store.add(item);
       const note = r.hadSecrets ? " (secrets redacted)" : "";
-      return { ok: true, message: `Saved brain memory.${note}` };
+      return { text: `Saved brain memory.${note}` };
     },
   });
 
