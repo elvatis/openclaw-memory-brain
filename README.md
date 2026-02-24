@@ -23,18 +23,7 @@ openclaw gateway restart
 
 ## Search
 
-Tool: `brain_memory_search({query, limit})`
-
-## Capture Rules (default)
-
-```bash
-openclaw plugins install -l ~/.openclaw/workspace/openclaw-memory-brain
-openclaw gateway restart
-```
-
-## Search
-
-Tool: `brain_memory_search({query, limit})`
+Tool: `brain_memory_search({ query, limit })`
 
 ## Capture Rules (default)
 
