@@ -16,6 +16,7 @@ Everything is stored locally (JSONL) with optional secret redaction.
 
 - Hook: `message_received` → optional capture
 - Tool: **`brain_memory_search({ query, limit })`**
+- Command: **`/remember-brain <text>`** (explicit save)
 
 ## Capture behavior (Convention)
 

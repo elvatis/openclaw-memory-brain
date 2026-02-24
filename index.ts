@@ -71,6 +71,37 @@ export default function register(api: any) {
     }
   });
 
+  // Command: /remember-brain <text>
+  api.registerCommand({
+    name: "remember-brain",
+    description: "Save a personal brain memory item (explicit capture)",
+    usage: "/remember-brain <text>",
+    run: async (ctx: any) => {
+      const text = (ctx?.argsText ?? "").trim();
+      if (!text) return { ok: true, message: "Usage: /remember-brain <text>" };
+
+      const r = redactSecrets ? redactor.redact(text) : { redactedText: text, hadSecrets: false, matches: [] };
+      const item: MemoryItem = {
+        id: uuid(),
+        kind: "note",
+        text: r.redactedText,
+        createdAt: new Date().toISOString(),
+        tags: defaultTags,
+        source: {
+          channel: ctx?.channel,
+          from: ctx?.from,
+          conversationId: ctx?.conversationId,
+          messageId: ctx?.messageId,
+        },
+        meta: r.hadSecrets ? { redaction: { hadSecrets: true, matches: r.matches } } : undefined,
+      };
+
+      await store.add(item);
+      const note = r.hadSecrets ? " (secrets redacted)" : "";
+      return { ok: true, message: `Saved brain memory.${note}` };
+    },
+  });
+
   // Auto-capture from inbound messages.
   api.on("message_received", async (event: any, ctx: any) => {
     const content = String(event?.content ?? "").trim();

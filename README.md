@@ -25,6 +25,8 @@ openclaw gateway restart
 
 Tool: `brain_memory_search({ query, limit })`
 
+Explicit save command: `/remember-brain <text>`
+
 ## Capture Rules (default)
 
 Convention: brain-memory should **not** silently store lots of chat.
