@@ -17,15 +17,15 @@ Everything is stored locally (JSONL) with optional secret redaction.
 - Hook: `message_received` → optional capture
 - Tool: **`brain_memory_search({ query, limit })`**
 
-## Capture behavior
+## Capture behavior (Convention)
+
+By default this plugin uses **explicit capture only**.
 
 A message is captured when:
 - it is long enough (`minChars`, default 80)
-- AND it contains either:
-  - explicit triggers (default: "merke dir", "notiere", "remember this", ...)
-  - or configured topics (default: "entscheidung", "decision")
+- AND it contains an explicit trigger, recommended format: **"Merke dir:"**
 
-You can force explicit-only mode with `requireExplicit: true`.
+If you want more aggressive capture, set `requireExplicit: false` in config (not recommended for OPSEC).
 
 ## Install
 

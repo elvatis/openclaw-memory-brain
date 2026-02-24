@@ -21,16 +21,16 @@
         "additionalProperties": false,
         "properties": {
           "minChars": { "type": "number", "default": 80, "minimum": 10 },
-          "requireExplicit": { "type": "boolean", "default": false },
+          "requireExplicit": { "type": "boolean", "default": true },
           "explicitTriggers": {
             "type": "array",
             "items": { "type": "string" },
-            "default": ["merke dir", "remember this", "notiere", "keep this"]
+            "default": ["merke dir", "merke dir:", "remember this", "remember this:", "notiere", "keep this"]
           },
           "autoTopics": {
             "type": "array",
             "items": { "type": "string" },
-            "default": ["entscheidung", "decision", "password", "api key", "token"]
+            "default": ["entscheidung", "decision"]
           }
         }
       },
