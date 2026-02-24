@@ -1,0 +1,40 @@
+{
+  "id": "openclaw-memory-brain",
+  "name": "OpenClaw Memory (Brain)",
+  "version": "0.1.0",
+  "description": "Personal brain memory: lightweight automatic capture + semantic recall.",
+  "configSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true },
+      "storePath": {
+        "type": "string",
+        "description": "JSONL file path for brain memory",
+        "default": "~/.openclaw/workspace/memory/brain-memory.jsonl"
+      },
+      "dims": { "type": "number", "default": 256, "minimum": 32, "maximum": 2048 },
+      "redactSecrets": { "type": "boolean", "default": true },
+      "capture": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "minChars": { "type": "number", "default": 80, "minimum": 10 },
+          "requireExplicit": { "type": "boolean", "default": false },
+          "explicitTriggers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": ["merke dir", "remember this", "notiere", "keep this"]
+          },
+          "autoTopics": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": ["entscheidung", "decision", "password", "api key", "token"]
+          }
+        }
+      },
+      "defaultTags": { "type": "array", "items": { "type": "string" }, "default": ["brain"] }
+    }
+  }
+}
