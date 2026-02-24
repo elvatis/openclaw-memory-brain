@@ -27,11 +27,13 @@ Tool: `brain_memory_search({ query, limit })`
 
 ## Capture Rules (default)
 
+Convention: brain-memory should **not** silently store lots of chat.
+
 Captures a message when:
 - length >= `minChars` (default 80)
-- AND either:
-  - contains explicit triggers ("merke dir", "notiere", ...)
-  - OR contains configured topics ("entscheidung", "decision", ...)
+- AND it contains an explicit trigger (recommended format: **"Merke dir:"**)
+
+If you want more aggressive capture, set `requireExplicit: false` (not recommended for OPSEC).
 
 ## Config
 
@@ -47,8 +49,8 @@ Captures a message when:
           "redactSecrets": true,
           "capture": {
             "minChars": 80,
-            "requireExplicit": false,
-            "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
+            "requireExplicit": true,
+            "explicitTriggers": ["merke dir", "merke dir:", "remember this", "remember this:", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
           "defaultTags": ["brain"]
