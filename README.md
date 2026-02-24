@@ -6,7 +6,26 @@ This plugin is more automatic than `openclaw-memory-docs`:
 - It listens for inbound messages and captures likely-valuable notes.
 - It stores locally in a JSONL file and supports semantic-ish search.
 
-## Install (dev)
+## Install
+
+### ClawHub
+
+```bash
+clawhub install openclaw-memory-brain
+```
+
+### Dev
+
+```bash
+openclaw plugins install -l ~/.openclaw/workspace/openclaw-memory-brain
+openclaw gateway restart
+```
+
+## Search
+
+Tool: `brain_memory_search({query, limit})`
+
+## Capture Rules (default)
 
 ```bash
 openclaw plugins install -l ~/.openclaw/workspace/openclaw-memory-brain
