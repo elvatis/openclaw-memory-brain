@@ -100,6 +100,14 @@
       "created": "2026-02-27T00:00:00Z",
       "github_issue": 7,
       "completed": "2026-02-27T04:06:28.777Z"
+    },
+    "T-007": {
+      "title": "Add time-based retention policy with automatic cleanup",
+      "status": "ready",
+      "priority": "medium",
+      "depends_on": [],
+      "created": "2026-02-27T08:40:56Z",
+      "github_issue": "https://github.com/homeofe/openclaw-memory-brain/issues/7"
     }
   }
 }
