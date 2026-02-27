@@ -16,6 +16,7 @@
       },
       "dims": { "type": "number", "default": 256, "minimum": 32, "maximum": 2048 },
       "redactSecrets": { "type": "boolean", "default": true },
+      "maxItems": { "type": "number", "default": 5000, "minimum": 100, "maximum": 100000 },
       "capture": {
         "type": "object",
         "additionalProperties": false,
