@@ -1,4 +1,4 @@
-{
+﻿{
   "aahp_version": "3.0",
   "project": "openclaw-memory-brain",
   "last_session": {
@@ -107,7 +107,7 @@
       "priority": "medium",
       "depends_on": [],
       "created": "2026-02-27T08:40:56Z",
-      "github_issue": "https://github.com/homeofe/openclaw-memory-brain/issues/7",
+      "github_issue": "https://github.com/elvatis/openclaw-memory-brain/issues/7",
       "completed": "2026-02-27T07:50:25.570Z"
     }
   }

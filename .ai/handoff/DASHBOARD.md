@@ -1,4 +1,4 @@
-# openclaw-memory-brain: Build Dashboard
+﻿# openclaw-memory-brain: Build Dashboard
 
 > Single source of truth for build health, test coverage, and pipeline state.
 > Updated by agents at the end of every completed task.
@@ -55,11 +55,11 @@
 
 | ID | Issue | Priority | Labels | Status |
 |----|-------|----------|--------|--------|
-| #4 | [Add unit test suite for all commands and auto-capture](https://github.com/homeofe/openclaw-memory-brain/issues/4) | HIGH | enhancement, v0.2 | Done |
-| #5 | [Add tag-based filtering to search and list commands](https://github.com/homeofe/openclaw-memory-brain/issues/5) | MEDIUM | enhancement, v0.2 | Done |
-| #6 | [Add memory export and import commands for backup and portability](https://github.com/homeofe/openclaw-memory-brain/issues/6) | MEDIUM | enhancement, v0.2 | Done |
-| #7 | [Add time-based retention policy with automatic cleanup](https://github.com/homeofe/openclaw-memory-brain/issues/7) | LOW | enhancement, v0.2 | Done |
-| #8 | [Update README and SKILL.md to document all v0.1.2 commands](https://github.com/homeofe/openclaw-memory-brain/issues/8) | HIGH | documentation, v0.2 | Done |
+| #4 | [Add unit test suite for all commands and auto-capture](https://github.com/elvatis/openclaw-memory-brain/issues/4) | HIGH | enhancement, v0.2 | Done |
+| #5 | [Add tag-based filtering to search and list commands](https://github.com/elvatis/openclaw-memory-brain/issues/5) | MEDIUM | enhancement, v0.2 | Done |
+| #6 | [Add memory export and import commands for backup and portability](https://github.com/elvatis/openclaw-memory-brain/issues/6) | MEDIUM | enhancement, v0.2 | Done |
+| #7 | [Add time-based retention policy with automatic cleanup](https://github.com/elvatis/openclaw-memory-brain/issues/7) | LOW | enhancement, v0.2 | Done |
+| #8 | [Update README and SKILL.md to document all v0.1.2 commands](https://github.com/elvatis/openclaw-memory-brain/issues/8) | HIGH | documentation, v0.2 | Done |
 
 ---
 
