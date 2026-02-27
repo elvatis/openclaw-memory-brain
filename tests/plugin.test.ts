@@ -1771,6 +1771,9 @@ describe("retention policy - edge cases", () => {
     });
     register(api);
 
+    // Wait for async startup tasks (retention, TTL purge) to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     const importCmd = api._commands.get("import-brain")!;
     await importCmd.handler({
       args: JSON.stringify([
