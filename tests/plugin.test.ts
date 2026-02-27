@@ -2798,3 +2798,658 @@ describe("/forget-brain additional edge cases", () => {
     expect(result.text).toContain("Usage");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1: Per-channel capture policy
+// ---------------------------------------------------------------------------
+
+describe("per-channel capture policy", () => {
+  it("captures from all channels by default (no channel config)", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({ storePath, capture: { minChars: 10 } });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: important note from slack channel", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("blocks capture from channels in the deny list", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["random", "off-topic"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: message from random channel should be blocked", from: "user" },
+      { messageProvider: "random", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("allows capture from channels not in the deny list", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["random"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: message from general should pass deny filter", from: "user" },
+      { messageProvider: "general", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("only captures from channels in the allow list", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { allow: ["general", "important"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // From allowed channel
+    await handler(
+      { content: "remember this: from general should be allowed by allowlist", from: "user" },
+      { messageProvider: "general", sessionId: "s1" },
+    );
+
+    // From non-allowed channel
+    await handler(
+      { content: "remember this: from random should be blocked by allowlist", from: "user" },
+      { messageProvider: "random", sessionId: "s2" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+    expect(result.text).toContain("general");
+  });
+
+  it("deny list takes precedence over allow list", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { allow: ["general", "random"], deny: ["random"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: random is in both allow and deny lists test", from: "user" },
+      { messageProvider: "random", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("uses defaultPolicy='skip' to block all channels not in allow list", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { defaultPolicy: "skip" },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: message should be skipped by default policy", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("channel matching is case-insensitive", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["Random"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: lowercase random should match uppercase deny entry", from: "user" },
+      { messageProvider: "random", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("handles undefined/empty messageProvider gracefully", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["random"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: message with no provider set at all", from: "user" },
+      { messageProvider: undefined, sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("logs info when capture is skipped due to channel policy", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["blocked-channel"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: this should be blocked and logged", from: "user" },
+      { messageProvider: "blocked-channel", sessionId: "s1" },
+    );
+
+    expect(api.logger?.info).toHaveBeenCalledWith(
+      expect.stringContaining("not allowed by policy"),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2: Deduplication
+// ---------------------------------------------------------------------------
+
+describe("deduplication", () => {
+  it("skips near-duplicate messages when dedupeThreshold is set", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, dedupeThreshold: 0.8 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // First capture
+    await handler(
+      { content: "remember this: the database migration strategy is complete", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    // Near-duplicate capture (same content)
+    await handler(
+      { content: "remember this: the database migration strategy is complete", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("does not skip different messages even with dedupeThreshold set", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, dedupeThreshold: 0.95 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: the frontend React component library is ready", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    await handler(
+      { content: "remember this: the backend Python API service needs refactoring", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (2)");
+  });
+
+  it("does not deduplicate when dedupeThreshold is 0 (disabled)", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, dedupeThreshold: 0 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Same content twice - should both be stored
+    await handler(
+      { content: "remember this: exact duplicate content for dedup disabled test", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+    await handler(
+      { content: "remember this: exact duplicate content for dedup disabled test", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (2)");
+  });
+
+  it("logs info when duplicate is skipped", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, dedupeThreshold: 0.8 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: original message for dedup log test content", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+    await handler(
+      { content: "remember this: original message for dedup log test content", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    expect(api.logger?.info).toHaveBeenCalledWith(
+      expect.stringContaining("skipped duplicate"),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2: TTL support
+// ---------------------------------------------------------------------------
+
+describe("TTL support", () => {
+  it("sets expiresAt on items when defaultTtlMs is configured", async () => {
+    const storePath = tempStorePath();
+    const ttl = 3600_000; // 1 hour
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, defaultTtlMs: ttl },
+    });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "TTL test note with expiry" });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].expiresAt).toBeDefined();
+    const expiresAt = new Date(payload.items[0].expiresAt).getTime();
+    const now = Date.now();
+    // expiresAt should be roughly 1 hour from now
+    expect(expiresAt).toBeGreaterThan(now + ttl - 5000);
+    expect(expiresAt).toBeLessThan(now + ttl + 5000);
+  });
+
+  it("does not set expiresAt when defaultTtlMs is 0 (disabled)", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, defaultTtlMs: 0 },
+    });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note without TTL expiry" });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].expiresAt).toBeUndefined();
+  });
+
+  it("auto-capture also applies TTL when defaultTtlMs is set", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, defaultTtlMs: 7200_000 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: auto-captured note should have TTL set", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].expiresAt).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #3: Explicit capture UX - trigger prefix stripping
+// ---------------------------------------------------------------------------
+
+describe("explicit capture UX - trigger prefix stripping", () => {
+  it("strips 'remember this:' prefix from auto-captured text", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({ storePath, capture: { minChars: 10 } });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: the actual content that matters for the test", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "actual content matters" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // Should not contain the trigger prefix
+    expect(data.hits[0]!.text).not.toMatch(/^remember this/i);
+    // Should contain the payload
+    expect(data.hits[0]!.text).toContain("the actual content that matters");
+  });
+
+  it("strips 'merke dir:' prefix from auto-captured text", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({ storePath, capture: { minChars: 10 } });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "merke dir: wichtige Architektur-Entscheidung ueber das System", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "Architektur Entscheidung" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.text).not.toMatch(/^merke dir/i);
+  });
+
+  it("does not strip prefix for topic-only captures (not explicit)", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    const content = "This is a major decision about cloud provider selection for the project";
+    await handler(
+      { content, from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "decision cloud provider" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // Topic captures should preserve the full text
+    expect(data.hits[0]!.text).toBe(content);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #3: /remember-brain confirmation includes ID
+// ---------------------------------------------------------------------------
+
+describe("/remember-brain confirmation includes ID", () => {
+  it("returns confirmation with item ID", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({ args: "Test note for ID confirmation" });
+    expect(result.text).toMatch(/Saved brain memory \[id=.+\]\./);
+  });
+
+  it("returns confirmation with ID and redaction note", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({
+      args: "My key is AIzaSyExampleExampleExampleExample1234 for the project",
+    });
+    expect(result.text).toMatch(/Saved brain memory \[id=.+\]\. \(secrets redacted\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #3: /brain-status command
+// ---------------------------------------------------------------------------
+
+describe("/brain-status command", () => {
+  it("shows status with zero items and zero session stats", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Brain Memory Status");
+    expect(result.text).toContain("Total stored items: 0");
+    expect(result.text).toContain("Messages processed: 0");
+    expect(result.text).toContain("Explicit captures: 0");
+    expect(result.text).toContain("Topic captures: 0");
+  });
+
+  it("shows correct item count after storing items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "First status test note" });
+    await rememberCmd.handler({ args: "Second status test note" });
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Total stored items: 2");
+  });
+
+  it("tracks auto-capture stats correctly", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Explicit capture
+    await handler(
+      { content: "remember this: first explicit capture for status test", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    // Topic capture
+    await handler(
+      { content: "This decision about the API design is critical for the project", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    // Short message (skipped)
+    await handler(
+      { content: "hi there", from: "user" },
+      { messageProvider: "slack", sessionId: "s3" },
+    );
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Messages processed: 3");
+    expect(result.text).toContain("Explicit captures: 1");
+    expect(result.text).toContain("Topic captures: 1");
+    expect(result.text).toContain("Skipped (too short): 1");
+  });
+
+  it("tracks channel-skipped stats", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: {
+        minChars: 10,
+        channels: { deny: ["random"] },
+      },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: message from denied channel for stats test", from: "user" },
+      { messageProvider: "random", sessionId: "s1" },
+    );
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Skipped (channel policy): 1");
+  });
+
+  it("tracks duplicate-skipped stats", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, dedupeThreshold: 0.8 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: original note for duplicate stats tracking test", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+    await handler(
+      { content: "remember this: original note for duplicate stats tracking test", from: "user" },
+      { messageProvider: "slack", sessionId: "s2" },
+    );
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Skipped (duplicate): 1");
+  });
+
+  it("shows config values in status output", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      capture: {
+        minChars: 50,
+        dedupeThreshold: 0.9,
+        defaultTtlMs: 3600000,
+        channels: { allow: ["general"] },
+      },
+      retention: { maxAgeDays: 30 },
+    });
+    register(api);
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("minChars: 50");
+    expect(result.text).toContain("dedupeThreshold: 0.9");
+    expect(result.text).toContain("defaultTtlMs: 3600000");
+    expect(result.text).toContain("maxAgeDays: 30");
+    expect(result.text).toContain("allow=general");
+  });
+
+  it("has correct metadata", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("brain-status")!;
+    expect(cmd.name).toBe("brain-status");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/brain-status");
+    expect(cmd.requireAuth).toBe(false);
+    expect(cmd.acceptsArgs).toBe(false);
+  });
+});
