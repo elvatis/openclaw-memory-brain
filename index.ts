@@ -6,6 +6,7 @@ import {
   expandHome,
   safePath,
   safeLimit,
+  ttlMs,
   type MemoryItem,
   type PluginApi,
   type CommandContext,
@@ -13,6 +14,16 @@ import {
   type MessageEvent,
   type MessageEventContext,
 } from "@elvatis_com/openclaw-memory-core";
+
+/** Internal counters for /brain-status. */
+interface CaptureStats {
+  explicitCaptures: number;
+  topicCaptures: number;
+  skippedShort: number;
+  skippedChannel: number;
+  skippedDuplicate: number;
+  totalMessages: number;
+}
 
 export default function register(api: PluginApi) {
   const cfg = (api.pluginConfig ?? {}) as {
@@ -27,6 +38,13 @@ export default function register(api: PluginApi) {
       requireExplicit?: boolean;
       explicitTriggers?: string[];
       autoTopics?: string[];
+      channels?: {
+        allow?: string[];
+        deny?: string[];
+        defaultPolicy?: "capture" | "skip";
+      };
+      dedupeThreshold?: number;
+      defaultTtlMs?: number;
     };
     retention?: {
       maxAgeDays?: number;
@@ -54,6 +72,26 @@ export default function register(api: PluginApi) {
   const defaultTags: string[] = cfg.defaultTags ?? ["brain"];
   const redactSecrets: boolean = cfg.redactSecrets !== false;
 
+  // Issue #1: Per-channel capture policy
+  const channelsCfg = captureCfg.channels ?? {};
+  const channelAllow: string[] = channelsCfg.allow ?? [];
+  const channelDeny: string[] = channelsCfg.deny ?? [];
+  const channelDefaultPolicy: "capture" | "skip" = channelsCfg.defaultPolicy ?? "capture";
+
+  // Issue #2: Dedupe + TTL
+  const dedupeThreshold: number = captureCfg.dedupeThreshold ?? 0;
+  const defaultTtlMs: number = captureCfg.defaultTtlMs ?? 0;
+
+  // Issue #3: Capture stats for /brain-status
+  const stats: CaptureStats = {
+    explicitCaptures: 0,
+    topicCaptures: 0,
+    skippedShort: 0,
+    skippedChannel: 0,
+    skippedDuplicate: 0,
+    totalMessages: 0,
+  };
+
   function includesAny(hay: string, needles: string[]): boolean {
     const s = hay.toLowerCase();
     return needles.some((n) => s.includes(n.toLowerCase()));
@@ -65,6 +103,41 @@ export default function register(api: PluginApi) {
     const tags = match[1]!.split(",").map((t) => t.trim()).filter(Boolean);
     const rest = raw.replace(/--tags\s+\S+/, "").replace(/\s+/g, " ").trim();
     return { tags, rest };
+  }
+
+  /** Issue #1: Check if capture is allowed for the given channel/provider. */
+  function isChannelAllowed(channel: string | undefined): boolean {
+    const ch = (channel ?? "").toLowerCase();
+    // If the deny list contains this channel, block it
+    if (channelDeny.length > 0 && channelDeny.some((d) => d.toLowerCase() === ch)) return false;
+    // If an allow list is set, only allow listed channels
+    if (channelAllow.length > 0) return channelAllow.some((a) => a.toLowerCase() === ch);
+    // Fall back to default policy
+    return channelDefaultPolicy === "capture";
+  }
+
+  /** Issue #3: Strip explicit trigger prefixes from captured text. */
+  function stripTriggerPrefix(text: string): string {
+    const lower = text.toLowerCase();
+    for (const trigger of explicitTriggers) {
+      const tLower = trigger.toLowerCase();
+      const idx = lower.indexOf(tLower);
+      if (idx !== -1) {
+        // Remove the trigger and any following colon/whitespace
+        let stripped = text.slice(0, idx) + text.slice(idx + trigger.length);
+        stripped = stripped.replace(/^\s*[:]\s*/, "").trim();
+        if (stripped) return stripped;
+      }
+    }
+    return text;
+  }
+
+  /** Issue #2: Check if content is a near-duplicate of an existing memory. */
+  async function isDuplicate(text: string): Promise<boolean> {
+    if (dedupeThreshold <= 0) return false;
+    const hits = await store.search(text, { limit: 1 });
+    if (hits.length === 0) return false;
+    return hits[0]!.score >= dedupeThreshold;
   }
 
   const maxAgeDays: number = cfg.retention?.maxAgeDays ?? 0;
@@ -96,6 +169,13 @@ export default function register(api: PluginApi) {
       api.logger?.error?.(`[memory-brain] retention startup error: ${(err as Error).message}`);
     });
   }
+
+  // Purge TTL-expired items on startup
+  store.purgeExpired().then((n) => {
+    if (n > 0) api.logger?.info?.(`[memory-brain] TTL purge: removed ${n} expired item(s) on startup`);
+  }).catch((err: unknown) => {
+    api.logger?.error?.(`[memory-brain] TTL purge startup error: ${(err as Error).message}`);
+  });
 
   // Tool: brain_memory_search
   api.registerTool({
@@ -145,8 +225,9 @@ export default function register(api: PluginApi) {
 
       const mergedTags = [...defaultTags, ...extraTags.filter((t) => !defaultTags.includes(t))];
       const r = redactSecrets ? redactor.redact(text) : { redactedText: text, hadSecrets: false, matches: [] };
+      const id = uuid();
       const item: MemoryItem = {
-        id: uuid(),
+        id,
         kind: "note",
         text: r.redactedText,
         createdAt: new Date().toISOString(),
@@ -160,9 +241,15 @@ export default function register(api: PluginApi) {
         meta: r.hadSecrets ? { redaction: { hadSecrets: true, matches: r.matches } } : undefined,
       };
 
+      // Issue #2: Apply TTL if configured
+      if (defaultTtlMs > 0) {
+        item.expiresAt = ttlMs(defaultTtlMs);
+      }
+
       await store.add(item);
       const note = r.hadSecrets ? " (secrets redacted)" : "";
-      return { text: `Saved brain memory.${note}` };
+      // Issue #3: Include id in confirmation
+      return { text: `Saved brain memory [id=${id}].${note}` };
     },
   });
 
@@ -193,7 +280,7 @@ export default function register(api: PluginApi) {
       const hits = await store.search(query, { limit, ...(tags.length > 0 ? { tags } : {}) });
       if (hits.length === 0) return { text: `No brain memories found for: ${query}` };
       const lines = hits.map((h, n) =>
-        `${n + 1}. [score:${h.score.toFixed(2)}] ${h.item.text.slice(0, 120)}${h.item.text.length > 120 ? "…" : ""}`
+        `${n + 1}. [score:${h.score.toFixed(2)}] ${h.item.text.slice(0, 120)}${h.item.text.length > 120 ? "\u2026" : ""}`
       );
       return { text: `Brain memory results for "${query}":\n${lines.join("\n")}` };
     },
@@ -213,7 +300,7 @@ export default function register(api: PluginApi) {
       const items = await store.list({ limit, ...(tags.length > 0 ? { tags } : {}) });
       if (items.length === 0) return { text: "No brain memories stored yet." };
       const lines = items.map((i, n) =>
-        `${n + 1}. [${i.createdAt.slice(0, 10)}] ${i.text.slice(0, 120)}${i.text.length > 120 ? "…" : ""}`
+        `${n + 1}. [${i.createdAt.slice(0, 10)}] ${i.text.slice(0, 120)}${i.text.length > 120 ? "\u2026" : ""}`
       );
       return { text: `Brain memories (${items.length}):\n${lines.join("\n")}` };
     },
@@ -363,12 +450,57 @@ export default function register(api: PluginApi) {
     },
   });
 
+  // Issue #3: Command: /brain-status - show capture stats and config
+  api.registerCommand({
+    name: "brain-status",
+    description: "Show brain memory capture statistics and current configuration.",
+    usage: "/brain-status",
+    requireAuth: false,
+    acceptsArgs: false,
+    handler: async () => {
+      const items = await store.list({ limit: 5000 });
+      const lines: string[] = [
+        `Brain Memory Status`,
+        `---`,
+        `Total stored items: ${items.length}`,
+        `Session stats:`,
+        `  Messages processed: ${stats.totalMessages}`,
+        `  Explicit captures: ${stats.explicitCaptures}`,
+        `  Topic captures: ${stats.topicCaptures}`,
+        `  Skipped (too short): ${stats.skippedShort}`,
+        `  Skipped (channel policy): ${stats.skippedChannel}`,
+        `  Skipped (duplicate): ${stats.skippedDuplicate}`,
+        `Config:`,
+        `  requireExplicit: ${requireExplicit}`,
+        `  minChars: ${minChars}`,
+        `  dedupeThreshold: ${dedupeThreshold || "disabled"}`,
+        `  defaultTtlMs: ${defaultTtlMs || "disabled"}`,
+        `  channelPolicy: ${channelAllow.length > 0 ? "allow=" + channelAllow.join(",") : channelDeny.length > 0 ? "deny=" + channelDeny.join(",") : "default=" + channelDefaultPolicy}`,
+        `  maxAgeDays: ${maxAgeDays || "disabled"}`,
+      ];
+      return { text: lines.join("\n") };
+    },
+  });
+
   // Auto-capture from inbound messages.
   api.on("message_received", async (event: MessageEvent, ctx: MessageEventContext) => {
     try {
+      stats.totalMessages++;
       const content = String(event?.content ?? "").trim();
       if (!content) return;
-      if (content.length < minChars) return;
+
+      if (content.length < minChars) {
+        stats.skippedShort++;
+        return;
+      }
+
+      // Issue #1: Per-channel capture policy
+      const channel = ctx?.messageProvider;
+      if (!isChannelAllowed(channel)) {
+        stats.skippedChannel++;
+        api.logger?.info?.(`[memory-brain] skipped capture: channel "${channel}" not allowed by policy`);
+        return;
+      }
 
       const isExplicit = includesAny(content, explicitTriggers);
       const isTopic = includesAny(content, autoTopics);
@@ -376,7 +508,18 @@ export default function register(api: PluginApi) {
       if (requireExplicit && !isExplicit) return;
       if (!requireExplicit && !isExplicit && !isTopic) return;
 
-      const r = redactSecrets ? redactor.redact(content) : { redactedText: content, hadSecrets: false, matches: [] as Array<{rule: string; count: number}> };
+      // Issue #3: Strip trigger prefix from captured text
+      const cleanedContent = isExplicit ? stripTriggerPrefix(content) : content;
+      const textToStore = cleanedContent || content; // fallback if stripping removes everything
+
+      // Issue #2: Dedupe check
+      if (await isDuplicate(textToStore)) {
+        stats.skippedDuplicate++;
+        api.logger?.info?.(`[memory-brain] skipped duplicate capture`);
+        return;
+      }
+
+      const r = redactSecrets ? redactor.redact(textToStore) : { redactedText: textToStore, hadSecrets: false, matches: [] as Array<{rule: string; count: number}> };
       const item: MemoryItem = {
         id: uuid(),
         kind: "note",
@@ -394,7 +537,16 @@ export default function register(api: PluginApi) {
         }
       };
 
+      // Issue #2: Apply TTL if configured
+      if (defaultTtlMs > 0) {
+        item.expiresAt = ttlMs(defaultTtlMs);
+      }
+
       await store.add(item);
+
+      if (isExplicit) stats.explicitCaptures++;
+      if (isTopic && !isExplicit) stats.topicCaptures++;
+
       api.logger?.info?.(`[memory-brain] captured memory (explicit=${isExplicit} topic=${isTopic}) id=${item.id}`);
     } catch (err: unknown) {
       api.logger?.error?.(`[memory-brain] failed to capture message: ${(err as Error).message}`);

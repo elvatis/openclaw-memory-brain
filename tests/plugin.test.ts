@@ -82,7 +82,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("register() - plugin setup", () => {
-  it("registers all eight commands and one tool", () => {
+  it("registers all nine commands and one tool", () => {
     const api = createMockApi({ storePath: tempStorePath() });
     register(api);
 
@@ -94,6 +94,7 @@ describe("register() - plugin setup", () => {
     expect(api._commands.has("export-brain")).toBe(true);
     expect(api._commands.has("import-brain")).toBe(true);
     expect(api._commands.has("purge-brain")).toBe(true);
+    expect(api._commands.has("brain-status")).toBe(true);
     expect(api._tools.has("brain_memory_search")).toBe(true);
   });
 
@@ -127,7 +128,7 @@ describe("register() - plugin setup", () => {
     register(api);
 
     // Plugin should still register everything with defaults
-    expect(api._commands.size).toBe(8);
+    expect(api._commands.size).toBe(9);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -184,8 +185,8 @@ describe("/remember-brain command", () => {
     const result = await cmd.handler({
       args: "My API key is AIzaSyExampleExampleExampleExample1234 for the project",
     });
-    // No redaction note
-    expect(result.text).toBe("Saved brain memory.");
+    // No redaction note, but includes id
+    expect(result.text).toMatch(/^Saved brain memory \[id=.+\]\.$/);
   });
 
   it("passes source context from CommandContext", async () => {
@@ -2472,7 +2473,7 @@ describe("null and undefined pluginConfig", () => {
     const api = createMockApi();
     (api as unknown as Record<string, unknown>).pluginConfig = null;
     register(api);
-    expect(api._commands.size).toBe(8);
+    expect(api._commands.size).toBe(9);
     expect(api._tools.size).toBe(1);
   });
 
@@ -2480,7 +2481,7 @@ describe("null and undefined pluginConfig", () => {
     const api = createMockApi();
     (api as unknown as Record<string, unknown>).pluginConfig = undefined;
     register(api);
-    expect(api._commands.size).toBe(8);
+    expect(api._commands.size).toBe(9);
     expect(api._tools.size).toBe(1);
   });
 });
