@@ -9,7 +9,7 @@
 
 | Name | Version | Build | Tests | Status | Notes |
 |------|---------|-------|-------|--------|-------|
-| openclaw-memory-brain | 0.1.2 | OK | OK (58) | Active | OpenClaw memory plugin (brain) |
+| openclaw-memory-brain | 0.1.2 | OK | OK (168) | Active | OpenClaw memory plugin (brain) |
 
 **Legend:** OK passing - FAIL failing - stub/mock - pending - blocked
 
@@ -19,7 +19,7 @@
 
 | Suite | Tests | Status | Last Run |
 |-------|-------|--------|----------|
-| unit | 58 | OK All passing | 2026-02-27 |
+| unit | 168 | OK All passing | 2026-02-27 |
 
 ### Test Suites
 
@@ -44,9 +44,9 @@
 
 | Field | Value |
 |-------|-------|
-| Current task | T-002 completed - T-003 next |
-| Phase | implementation |
-| Last completed | T-002: Implement unit test suite (2026-02-27) |
+| Current task | All tasks complete |
+| Phase | done |
+| Last completed | T-007: Time-based retention policy (2026-02-27) |
 | Rate limit | None |
 
 ---
@@ -56,17 +56,10 @@
 | ID | Issue | Priority | Labels | Status |
 |----|-------|----------|--------|--------|
 | #4 | [Add unit test suite for all commands and auto-capture](https://github.com/homeofe/openclaw-memory-brain/issues/4) | HIGH | enhancement, v0.2 | Done |
-| #5 | [Add tag-based filtering to search and list commands](https://github.com/homeofe/openclaw-memory-brain/issues/5) | MEDIUM | enhancement, v0.2 | Open |
-| #6 | [Add memory export and import commands for backup and portability](https://github.com/homeofe/openclaw-memory-brain/issues/6) | MEDIUM | enhancement, v0.2 | Open |
-| #7 | [Add time-based retention policy with automatic cleanup](https://github.com/homeofe/openclaw-memory-brain/issues/7) | LOW | enhancement, v0.2 | Open |
-| #8 | [Update README and SKILL.md to document all v0.1.2 commands](https://github.com/homeofe/openclaw-memory-brain/issues/8) | HIGH | documentation, v0.2 | Open |
-
-### Recommended Implementation Order
-
-1. #8 - Documentation update (quick win, no code risk)
-2. #5 - Tag-based filtering (core UX improvement)
-3. #6 - Export/import (portability feature)
-4. #7 - Retention policy (nice-to-have, lowest urgency)
+| #5 | [Add tag-based filtering to search and list commands](https://github.com/homeofe/openclaw-memory-brain/issues/5) | MEDIUM | enhancement, v0.2 | Done |
+| #6 | [Add memory export and import commands for backup and portability](https://github.com/homeofe/openclaw-memory-brain/issues/6) | MEDIUM | enhancement, v0.2 | Done |
+| #7 | [Add time-based retention policy with automatic cleanup](https://github.com/homeofe/openclaw-memory-brain/issues/7) | LOW | enhancement, v0.2 | Done |
+| #8 | [Update README and SKILL.md to document all v0.1.2 commands](https://github.com/homeofe/openclaw-memory-brain/issues/8) | HIGH | documentation, v0.2 | Done |
 
 ---
 
@@ -74,10 +67,7 @@
 
 | ID | Task | Priority | Blocked by | Ready? |
 |----|------|----------|-----------|--------|
-| T-003 | Update README and SKILL.md (#8) | HIGH | - | OK Ready |
-| T-004 | Add tag-based filtering (#5) | MEDIUM | T-002 (done) | OK Ready |
-| T-005 | Add export/import commands (#6) | MEDIUM | T-002 (done) | OK Ready |
-| T-006 | Add retention policy (#7) | LOW | T-002 (done) | OK Ready |
+| - | (no open tasks) | - | - | - |
 
 ---
 
@@ -86,7 +76,12 @@
 | ID | Task | Completed |
 |----|------|-----------|
 | T-001 | Define v0.2 roadmap items as issues and prioritize | 2026-02-27 |
-| T-002 | Implement unit test suite (58 tests, all passing) | 2026-02-27 |
+| T-002 | Implement unit test suite (168 tests, all passing) | 2026-02-27 |
+| T-003 | Update README and SKILL.md (#8) | 2026-02-27 |
+| T-004 | Add tag-based filtering (#5) | 2026-02-27 |
+| T-005 | Add export/import commands (#6) | 2026-02-27 |
+| T-006 | Add retention policy (#7) | 2026-02-27 |
+| T-007 | Time-based retention policy with automatic cleanup | 2026-02-27 |
 
 ---
 
