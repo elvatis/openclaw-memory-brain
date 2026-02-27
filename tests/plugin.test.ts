@@ -2686,6 +2686,9 @@ describe("/purge-brain with arbitrary args", () => {
     });
     register(api);
 
+    // Wait for async startup tasks (retention, TTL purge) to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     const importCmd = api._commands.get("import-brain")!;
     const oldDate = new Date(Date.now() - 20 * 86_400_000).toISOString();
     await importCmd.handler({
