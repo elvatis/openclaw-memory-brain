@@ -265,7 +265,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (119 tests)
+npm test            # Run vitest test suite (168 tests)
 npm run test:watch  # Watch mode
 ```
 

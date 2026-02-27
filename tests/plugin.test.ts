@@ -2462,3 +2462,338 @@ describe("/export-brain - additional scenarios", () => {
     expect(payload.count).toBe(3);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Config null/undefined handling
+// ---------------------------------------------------------------------------
+
+describe("null and undefined pluginConfig", () => {
+  it("handles null pluginConfig without crashing", () => {
+    const api = createMockApi();
+    (api as unknown as Record<string, unknown>).pluginConfig = null;
+    register(api);
+    expect(api._commands.size).toBe(8);
+    expect(api._tools.size).toBe(1);
+  });
+
+  it("handles undefined pluginConfig without crashing", () => {
+    const api = createMockApi();
+    (api as unknown as Record<string, unknown>).pluginConfig = undefined;
+    register(api);
+    expect(api._commands.size).toBe(8);
+    expect(api._tools.size).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom dims and maxItems config
+// ---------------------------------------------------------------------------
+
+describe("custom dims and maxItems configuration", () => {
+  it("uses custom dims without errors", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), dims: 64 });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({ args: "Note with custom dims config value" });
+    expect(result.text).toContain("Saved brain memory");
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const searchResult = await tool.handler({ query: "custom dims" } as ToolCallParams);
+    const data = searchResult as { hits: unknown[] };
+    expect(data.hits.length).toBeGreaterThan(0);
+  });
+
+  it("uses custom maxItems without errors", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), maxItems: 200 });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({ args: "Note with custom maxItems config" });
+    expect(result.text).toContain("Saved brain memory");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Search result score ordering
+// ---------------------------------------------------------------------------
+
+describe("search result score ordering", () => {
+  it("returns results sorted by descending score", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "PostgreSQL database migration guide for production systems" });
+    await rememberCmd.handler({ args: "Redis cache configuration and horizontal scaling patterns" });
+    await rememberCmd.handler({ args: "PostgreSQL database backup procedures and disaster recovery" });
+    await rememberCmd.handler({ args: "Frontend React component library for shared UI elements" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "PostgreSQL database", limit: 20 } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+
+    for (let i = 1; i < data.hits.length; i++) {
+      expect(data.hits[i - 1]!.score).toBeGreaterThanOrEqual(data.hits[i]!.score);
+    }
+  });
+
+  it("all scores are between 0 and 1 inclusive", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "TypeScript strict mode configuration for monorepo projects" });
+    await rememberCmd.handler({ args: "Python virtual environment setup guide and best practices" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "TypeScript configuration" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+
+    for (const hit of data.hits) {
+      expect(hit.score).toBeGreaterThanOrEqual(0);
+      expect(hit.score).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /list-brain limit edge cases
+// ---------------------------------------------------------------------------
+
+describe("/list-brain limit edge cases", () => {
+  let api: MockApi;
+
+  beforeEach(async () => {
+    api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    for (let i = 1; i <= 3; i++) {
+      await rememberCmd.handler({ args: `List limit edge test item number ${i}` });
+    }
+  });
+
+  it("handles non-numeric limit argument gracefully", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "xyz" });
+    expect(result.text).toContain("Brain memories");
+  });
+
+  it("clamps limit above 50 to 50", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "999" });
+    expect(result.text).toContain("Brain memories (3)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Import ID edge cases
+// ---------------------------------------------------------------------------
+
+describe("import ID edge cases", () => {
+  it("generates UUID for items with empty string ID", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "", kind: "note", text: "Item with empty string ID for test", createdAt: "2026-01-01T00:00:00Z", tags: ["test"] },
+    ];
+
+    const importCmd = api._commands.get("import-brain")!;
+    const result = await importCmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 1 item.");
+
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Item with empty string ID");
+  });
+
+  it("generates UUID for items with numeric ID", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: 42, kind: "note", text: "Item with numeric ID for test", createdAt: "2026-01-01T00:00:00Z", tags: ["test"] },
+    ];
+
+    const importCmd = api._commands.get("import-brain")!;
+    const result = await importCmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 1 item.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export timestamp and version validation
+// ---------------------------------------------------------------------------
+
+describe("export envelope validation", () => {
+  it("exports valid ISO timestamp in exportedAt field", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note for export timestamp validation" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    const payload = JSON.parse(result.text);
+    const date = new Date(payload.exportedAt);
+    expect(isNaN(date.getTime())).toBe(false);
+  });
+
+  it("export version is always 1", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note for export version validation" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.version).toBe(1);
+  });
+
+  it("export count matches items array length", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "First count validation note" });
+    await rememberCmd.handler({ args: "Second count validation note" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.count).toBe(payload.items.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /purge-brain non-dry-run args
+// ---------------------------------------------------------------------------
+
+describe("/purge-brain with arbitrary args", () => {
+  it("treats non-dry-run args as a normal purge (not dry-run)", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 10 },
+    });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 20 * 86_400_000).toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "arb-001", kind: "note", text: "Old item for arbitrary arg purge test", createdAt: oldDate, tags: ["brain"] },
+      ]),
+    });
+
+    const purgeCmd = api._commands.get("purge-brain")!;
+    const result = await purgeCmd.handler({ args: "--force" });
+    expect(result.text).toContain("Purged 1 item(s)");
+    expect(result.text).not.toContain("Dry run");
+  });
+
+  it("treats whitespace-only args as a normal purge", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 10 },
+    });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Fresh item for whitespace arg purge test" });
+
+    const purgeCmd = api._commands.get("purge-brain")!;
+    const result = await purgeCmd.handler({ args: "   " });
+    expect(result.text).toContain("No items older than 10 day(s)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /remember-brain with source context fields
+// ---------------------------------------------------------------------------
+
+describe("/remember-brain source context completeness", () => {
+  it("includes all source fields from CommandContext", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({
+      args: "Note with complete source context",
+      channel: "discord",
+      from: "charlie",
+      conversationId: "conv-456",
+      messageId: "msg-789",
+    });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    const source = payload.items[0].source;
+
+    expect(source.channel).toBe("discord");
+    expect(source.from).toBe("charlie");
+    expect(source.conversationId).toBe("conv-456");
+    expect(source.messageId).toBe("msg-789");
+  });
+
+  it("handles missing source fields with undefined values", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Note with no source context at all" });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].source).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /search-brain edge cases
+// ---------------------------------------------------------------------------
+
+describe("/search-brain additional edge cases", () => {
+  it("returns usage when args is whitespace-only", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "   " });
+    expect(result.text).toContain("Usage");
+  });
+
+  it("search results line format includes score and truncated text", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Searchable note for output format verification test" });
+
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "Searchable note format" });
+    // Verify the output format: N. [score:X.XX] text
+    expect(result.text).toMatch(/1\. \[score:\d+\.\d+\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /forget-brain with whitespace ID
+// ---------------------------------------------------------------------------
+
+describe("/forget-brain additional edge cases", () => {
+  it("returns usage for undefined args", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("forget-brain")!;
+    const result = await cmd.handler({ args: undefined });
+    expect(result.text).toContain("Usage");
+  });
+});
