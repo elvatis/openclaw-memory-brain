@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "export-import-2026-02-27",
-    "timestamp": "2026-02-27T04:55:00.000Z",
-    "commit": "8fa2ed6",
+    "session_id": "retention-policy-2026-02-27",
+    "timestamp": "2026-02-27T05:06:00.000Z",
+    "commit": "pending",
     "phase": "implementation",
-    "duration_minutes": 5
+    "duration_minutes": 10
   },
   "files": {
     "STATUS.md": {
@@ -39,7 +39,7 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "Export/import commands implemented (T-005 done). 105 tests passing. /export-brain and /import-brain with JSON envelope format, duplicate detection, tag filtering. Next: T-006 (retention).",
+  "quick_context": "Retention policy implemented (T-006 done). 119 tests passing. /purge-brain command with --dry-run, startup auto-cleanup, configurable retention.maxAgeDays. All v0.2 tasks complete.",
   "next_task_id": 7,
   "tasks": {
     "T-001": {
@@ -88,17 +88,18 @@
       ],
       "created": "2026-02-27T00:00:00Z",
       "github_issue": 6,
-      "completed": "2026-02-27T04:55:00.000Z"
+      "completed": "2026-02-27T03:57:49.603Z"
     },
     "T-006": {
       "title": "Add retention policy (#7)",
-      "status": "ready",
+      "status": "done",
       "priority": "low",
       "depends_on": [
         "T-002"
       ],
       "created": "2026-02-27T00:00:00Z",
-      "github_issue": 7
+      "github_issue": 7,
+      "completed": "2026-02-27T05:06:00.000Z"
     }
   }
 }

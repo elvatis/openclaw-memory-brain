@@ -119,6 +119,21 @@ Import brain memory items from a JSON export. Requires authentication. Accepts e
 - Items without `tags` receive the configured `defaultTags`
 - Returns a summary: `Imported N items. X skipped (already exist). Y skipped (invalid format).`
 
+### `/purge-brain [--dry-run]`
+
+Delete brain memory items older than the configured retention period (`retention.maxAgeDays`). Requires authentication.
+
+```
+/purge-brain
+/purge-brain --dry-run
+```
+
+- Returns `"Retention policy is not configured."` if `maxAgeDays` is 0 or unset.
+- Use `--dry-run` to preview how many items would be deleted without actually removing them.
+- Returns a summary: `Purged N item(s) older than X day(s). M item(s) remaining.`
+
+When `retention.maxAgeDays` is configured, expired items are also automatically purged on plugin startup.
+
 ### `/forget-brain <id>`
 
 Delete a brain memory item by its unique ID. Requires authentication.
@@ -211,7 +226,10 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
             "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
-          "defaultTags": ["brain"]
+          "defaultTags": ["brain"],
+          "retention": {
+            "maxAgeDays": 90
+          }
         }
       }
     }
@@ -229,6 +247,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 | `redactSecrets` | boolean | `true` | Redact detected secrets (API keys, tokens, passwords) before storage |
 | `maxItems` | number | `5000` | Maximum number of memory items to keep (oldest are evicted, 100-100000) |
 | `defaultTags` | string[] | `["brain"]` | Default tags applied to all captured items |
+| `retention.maxAgeDays` | number | `0` | Delete items older than this many days. 0 = disabled. Expired items are purged on startup and via `/purge-brain`. |
 | `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
 | `capture.requireExplicit` | boolean | `true` | When true, only explicit triggers cause capture (recommended) |
 | `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture (substring match, case-insensitive) |
@@ -246,7 +265,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (105 tests)
+npm test            # Run vitest test suite (119 tests)
 npm run test:watch  # Watch mode
 ```
 
@@ -263,6 +282,9 @@ The test suite covers all plugin functionality:
 - `/export-brain` (empty store, JSON envelope format, MemoryItem fields, --tags filtering, valid JSON output)
 - `/import-brain` (usage, invalid JSON, invalid structure, empty array, bare array import, envelope import, duplicate skipping, invalid entry skipping, default tags, kind preservation, kind defaulting, UUID generation, requireAuth)
 - Export/import round-trip (data preservation, idempotent re-import)
+- `/purge-brain` (not-configured, delete expired, no items to purge, --dry-run preview, requireAuth, metadata)
+- Retention startup cleanup (auto-purge on startup, logging, disabled when maxAgeDays=0, no log when nothing expired)
+- Retention edge cases (invalid createdAt, empty store, purge all items)
 - `brain_memory_search` tool (result shape, empty/undefined query, limit, schema, tags parameter)
 - Tag-based filtering (AND logic, single tag, multiple tags, no-match tag, empty tags, merged tags with defaults)
 - Auto-capture (explicit trigger, auto-topic, short message rejection, no-trigger rejection, requireExplicit enforcement, empty content, case-insensitivity, secret redaction, error handling, custom minChars, custom triggers)

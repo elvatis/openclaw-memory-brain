@@ -97,6 +97,20 @@ Response: `Imported N items. X skipped (already exist). Y skipped (invalid forma
 
 Items with matching IDs are skipped (idempotent). Missing IDs get a new UUID. Invalid `kind` defaults to `"note"`. Missing `tags` receive `defaultTags`.
 
+### `/purge-brain [--dry-run]`
+
+Delete brain memory items older than the configured retention period.
+
+- **Auth required:** Yes
+- **Arguments:** Optional `--dry-run` flag
+
+```
+/purge-brain
+/purge-brain --dry-run
+```
+
+Response: `Purged N item(s) older than X day(s). M item(s) remaining.` or `Retention policy is not configured.` when `retention.maxAgeDays` is 0 or unset. Use `--dry-run` to preview without deleting. Expired items are also automatically purged on plugin startup.
+
 ### `/forget-brain <id>`
 
 Delete a brain memory item by its unique ID.
@@ -192,7 +206,10 @@ Full configuration reference via `openclaw.plugin.json`:
             "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
-          "defaultTags": ["brain"]
+          "defaultTags": ["brain"],
+          "retention": {
+            "maxAgeDays": 90
+          }
         }
       }
     }
@@ -210,6 +227,7 @@ Full configuration reference via `openclaw.plugin.json`:
 | `redactSecrets` | boolean | `true` | Redact detected secrets before storage |
 | `maxItems` | number | `5000` | Maximum stored items before eviction (100-100000) |
 | `defaultTags` | string[] | `["brain"]` | Default tags for all captured items |
+| `retention.maxAgeDays` | number | `0` | Delete items older than this many days. 0 = disabled. |
 | `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
 | `capture.requireExplicit` | boolean | `true` | Require explicit trigger phrases for capture |
 | `capture.explicitTriggers` | string[] | see config block | Trigger phrases for explicit capture (substring match, case-insensitive) |

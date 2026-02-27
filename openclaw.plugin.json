@@ -35,7 +35,14 @@
           }
         }
       },
-      "defaultTags": { "type": "array", "items": { "type": "string" }, "default": ["brain"] }
+      "defaultTags": { "type": "array", "items": { "type": "string" }, "default": ["brain"] },
+      "retention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxAgeDays": { "type": "number", "default": 0, "minimum": 0, "description": "Delete items older than this many days. 0 = disabled." }
+        }
+      }
     }
   }
 }

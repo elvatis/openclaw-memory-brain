@@ -82,7 +82,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("register() - plugin setup", () => {
-  it("registers all seven commands and one tool", () => {
+  it("registers all eight commands and one tool", () => {
     const api = createMockApi({ storePath: tempStorePath() });
     register(api);
 
@@ -93,6 +93,7 @@ describe("register() - plugin setup", () => {
     expect(api._commands.has("tags-brain")).toBe(true);
     expect(api._commands.has("export-brain")).toBe(true);
     expect(api._commands.has("import-brain")).toBe(true);
+    expect(api._commands.has("purge-brain")).toBe(true);
     expect(api._tools.has("brain_memory_search")).toBe(true);
   });
 
@@ -126,7 +127,7 @@ describe("register() - plugin setup", () => {
     register(api);
 
     // Plugin should still register everything with defaults
-    expect(api._commands.size).toBe(7);
+    expect(api._commands.size).toBe(8);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -1505,5 +1506,324 @@ describe("export/import round-trip", () => {
     const importResult = await importCmd.handler({ args: exportedJson });
     expect(importResult.text).toContain("Imported 0 items.");
     expect(importResult.text).toContain("1 skipped (already exist)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retention policy - /purge-brain command
+// ---------------------------------------------------------------------------
+
+describe("/purge-brain command", () => {
+  it("returns not-configured message when maxAgeDays is 0 (default)", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("purge-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Retention policy is not configured");
+  });
+
+  it("returns not-configured message when retention is not set", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("purge-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Set retention.maxAgeDays");
+  });
+
+  it("deletes items older than maxAgeDays", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 30 },
+    });
+    register(api);
+
+    // Import items with old and recent dates
+    const importCmd = api._commands.get("import-brain")!;
+    const now = new Date();
+    const oldDate = new Date(now.getTime() - 60 * 86_400_000).toISOString(); // 60 days ago
+    const recentDate = new Date(now.getTime() - 5 * 86_400_000).toISOString(); // 5 days ago
+
+    const items = [
+      { id: "old-001", kind: "note", text: "Old item that should be purged", createdAt: oldDate, tags: ["brain"] },
+      { id: "old-002", kind: "note", text: "Another old item to purge", createdAt: oldDate, tags: ["brain"] },
+      { id: "recent-001", kind: "note", text: "Recent item that should survive", createdAt: recentDate, tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    // Verify all 3 items exist
+    const listCmd = api._commands.get("list-brain")!;
+    const beforeResult = await listCmd.handler({});
+    expect(beforeResult.text).toContain("Brain memories (3)");
+
+    // Run purge
+    const purgeCmd = api._commands.get("purge-brain")!;
+    const purgeResult = await purgeCmd.handler({});
+    expect(purgeResult.text).toContain("Purged 2 item(s)");
+    expect(purgeResult.text).toContain("older than 30 day(s)");
+    expect(purgeResult.text).toContain("1 item(s) remaining");
+
+    // Verify only recent item remains
+    const afterResult = await listCmd.handler({});
+    expect(afterResult.text).toContain("Brain memories (1)");
+    expect(afterResult.text).toContain("Recent item");
+  });
+
+  it("reports no items to purge when all items are recent", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 30 },
+    });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "A fresh note added today" });
+
+    const cmd = api._commands.get("purge-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No items older than 30 day(s)");
+    expect(result.text).toContain("1 item(s) in store");
+  });
+
+  it("supports --dry-run to preview without deleting", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 10 },
+    });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 20 * 86_400_000).toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "dry-001", kind: "note", text: "Old item for dry run test", createdAt: oldDate, tags: ["brain"] },
+      ]),
+    });
+
+    const cmd = api._commands.get("purge-brain")!;
+    const result = await cmd.handler({ args: "--dry-run" });
+    expect(result.text).toContain("Dry run");
+    expect(result.text).toContain("1 of 1 item(s) would be deleted");
+
+    // Verify item was NOT actually deleted
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (1)");
+  });
+
+  it("has requireAuth set to true", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("purge-brain")!;
+    expect(cmd.requireAuth).toBe(true);
+  });
+
+  it("has correct metadata", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("purge-brain")!;
+    expect(cmd.name).toBe("purge-brain");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/purge-brain");
+    expect(cmd.usage).toContain("--dry-run");
+    expect(cmd.requireAuth).toBe(true);
+    expect(cmd.acceptsArgs).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retention policy - startup auto-cleanup
+// ---------------------------------------------------------------------------
+
+describe("retention policy - startup cleanup", () => {
+  it("deletes expired items on startup when maxAgeDays is configured", async () => {
+    const storePath = tempStorePath();
+
+    // First, create items with old dates in the store (no retention)
+    const setupApi = createMockApi({ storePath });
+    register(setupApi);
+
+    const importCmd = setupApi._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    const recentDate = new Date().toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "startup-old", kind: "note", text: "Old startup item", createdAt: oldDate, tags: ["brain"] },
+        { id: "startup-new", kind: "note", text: "New startup item", createdAt: recentDate, tags: ["brain"] },
+      ]),
+    });
+
+    // Now register with retention enabled - it should auto-purge on startup
+    const retentionApi = createMockApi({
+      storePath,
+      retention: { maxAgeDays: 30 },
+    });
+    register(retentionApi);
+
+    // Wait for the async startup retention to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Verify the old item was deleted
+    const listCmd = retentionApi._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+    expect(result.text).toContain("New startup item");
+    expect(result.text).not.toContain("Old startup item");
+  });
+
+  it("logs retention info on startup when items are deleted", async () => {
+    const storePath = tempStorePath();
+
+    // Pre-seed the store with old items
+    const setupApi = createMockApi({ storePath });
+    register(setupApi);
+
+    const importCmd = setupApi._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "log-old-001", kind: "note", text: "Old item for log test", createdAt: oldDate, tags: ["brain"] },
+      ]),
+    });
+
+    // Register with retention
+    const retentionApi = createMockApi({
+      storePath,
+      retention: { maxAgeDays: 7 },
+    });
+    register(retentionApi);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(retentionApi.logger?.info).toHaveBeenCalledWith(
+      expect.stringContaining("[memory-brain] retention: deleted 1 expired item(s)"),
+    );
+  });
+
+  it("does not run startup retention when maxAgeDays is 0", async () => {
+    const storePath = tempStorePath();
+
+    // Pre-seed
+    const setupApi = createMockApi({ storePath });
+    register(setupApi);
+
+    const importCmd = setupApi._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 365 * 86_400_000).toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "nopurge-001", kind: "note", text: "Very old item but no retention", createdAt: oldDate, tags: ["brain"] },
+      ]),
+    });
+
+    // Register without retention config
+    const noRetentionApi = createMockApi({ storePath });
+    register(noRetentionApi);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Old item should still exist
+    const listCmd = noRetentionApi._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Very old item");
+  });
+
+  it("does not log when no items are expired on startup", async () => {
+    const storePath = tempStorePath();
+
+    // Pre-seed with a recent item
+    const setupApi = createMockApi({ storePath });
+    register(setupApi);
+
+    const rememberCmd = setupApi._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Fresh item for startup test" });
+
+    // Register with retention
+    const retentionApi = createMockApi({
+      storePath,
+      retention: { maxAgeDays: 30 },
+    });
+    register(retentionApi);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Should NOT have logged a retention deletion message (only the startup enabled message)
+    const infoCalls = (retentionApi.logger?.info as ReturnType<typeof vi.fn>).mock.calls;
+    const retentionLogs = infoCalls.filter((call: unknown[]) =>
+      typeof call[0] === "string" && call[0].includes("retention: deleted"),
+    );
+    expect(retentionLogs.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retention policy - edge cases
+// ---------------------------------------------------------------------------
+
+describe("retention policy - edge cases", () => {
+  it("handles items with invalid createdAt gracefully (does not purge them)", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 30 },
+    });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "bad-date-001", kind: "note", text: "Item with bad date", createdAt: "not-a-date", tags: ["brain"] },
+      ]),
+    });
+
+    const purgeCmd = api._commands.get("purge-brain")!;
+    const result = await purgeCmd.handler({});
+    expect(result.text).toContain("No items older than 30 day(s)");
+
+    // Item should still exist
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Item with bad date");
+  });
+
+  it("purge on an empty store reports no items", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 30 },
+    });
+    register(api);
+
+    const cmd = api._commands.get("purge-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No items older than 30 day(s)");
+    expect(result.text).toContain("0 item(s) in store");
+  });
+
+  it("purges all items when all are older than maxAgeDays", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      retention: { maxAgeDays: 1 },
+    });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 5 * 86_400_000).toISOString();
+    await importCmd.handler({
+      args: JSON.stringify([
+        { id: "allold-001", kind: "note", text: "All old item one", createdAt: oldDate, tags: ["brain"] },
+        { id: "allold-002", kind: "note", text: "All old item two", createdAt: oldDate, tags: ["brain"] },
+      ]),
+    });
+
+    const purgeCmd = api._commands.get("purge-brain")!;
+    const result = await purgeCmd.handler({});
+    expect(result.text).toContain("Purged 2 item(s)");
+    expect(result.text).toContain("0 item(s) remaining");
+
+    // Store should be empty
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("No brain memories stored yet");
   });
 });

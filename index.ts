@@ -28,6 +28,9 @@ export default function register(api: PluginApi) {
       explicitTriggers?: string[];
       autoTopics?: string[];
     };
+    retention?: {
+      maxAgeDays?: number;
+    };
   };
   if (cfg.enabled === false) return;
 
@@ -64,7 +67,35 @@ export default function register(api: PluginApi) {
     return { tags, rest };
   }
 
+  const maxAgeDays: number = cfg.retention?.maxAgeDays ?? 0;
+
+  async function runRetention(dryRun = false): Promise<{ deleted: number; total: number }> {
+    if (maxAgeDays <= 0) return { deleted: 0, total: 0 };
+    const cutoff = Date.now() - maxAgeDays * 86_400_000;
+    const items = await store.list({ limit: 5000 });
+    let deleted = 0;
+    for (const item of items) {
+      const ts = new Date(item.createdAt).getTime();
+      if (!isNaN(ts) && ts < cutoff) {
+        if (!dryRun) await store.delete(item.id);
+        deleted++;
+      }
+    }
+    return { deleted, total: items.length };
+  }
+
   api.logger?.info?.(`[memory-brain] enabled. store=${storePath}`);
+
+  // Run retention on startup if configured
+  if (maxAgeDays > 0) {
+    runRetention().then((r) => {
+      if (r.deleted > 0) {
+        api.logger?.info?.(`[memory-brain] retention: deleted ${r.deleted} expired item(s) older than ${maxAgeDays} day(s)`);
+      }
+    }).catch((err: unknown) => {
+      api.logger?.error?.(`[memory-brain] retention startup error: ${(err as Error).message}`);
+    });
+  }
 
   // Tool: brain_memory_search
   api.registerTool({
@@ -241,6 +272,24 @@ export default function register(api: PluginApi) {
         items,
       };
       return { text: JSON.stringify(payload, null, 2) };
+    },
+  });
+
+  // Command: /purge-brain [--dry-run]
+  api.registerCommand({
+    name: "purge-brain",
+    description: "Delete brain memory items older than the configured retention period (maxAgeDays). Use --dry-run to preview without deleting.",
+    usage: "/purge-brain [--dry-run]",
+    requireAuth: true,
+    acceptsArgs: true,
+    handler: async (ctx: CommandContext) => {
+      if (maxAgeDays <= 0) return { text: "Retention policy is not configured. Set retention.maxAgeDays in plugin config." };
+      const raw = String(ctx?.args ?? "").trim();
+      const dryRun = raw === "--dry-run";
+      const result = await runRetention(dryRun);
+      if (result.deleted === 0) return { text: `No items older than ${maxAgeDays} day(s). ${result.total} item(s) in store.` };
+      if (dryRun) return { text: `Dry run: ${result.deleted} of ${result.total} item(s) would be deleted (older than ${maxAgeDays} day(s)).` };
+      return { text: `Purged ${result.deleted} item(s) older than ${maxAgeDays} day(s). ${result.total - result.deleted} item(s) remaining.` };
     },
   });
 
