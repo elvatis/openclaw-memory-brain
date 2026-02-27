@@ -1,10 +1,12 @@
 # openclaw-memory-brain
 
-OpenClaw plugin: **Personal Brain Memory**.
+OpenClaw plugin: **Personal Brain Memory** (v0.1.2).
 
-This plugin is more automatic than `openclaw-memory-docs`:
-- It listens for inbound messages and captures likely-valuable notes.
-- It stores locally in a JSONL file and supports semantic-ish search.
+A lightweight OpenClaw Gateway plugin that acts as a personal brain:
+- Listens for inbound messages and captures likely-valuable notes based on configurable triggers.
+- Stores everything locally in a JSONL file with optional secret redaction.
+- Supports semantic-ish search via hash-based embeddings.
+- Provides slash commands for manual CRUD operations.
 
 ## Install
 
@@ -14,30 +16,123 @@ This plugin is more automatic than `openclaw-memory-docs`:
 clawhub install openclaw-memory-brain
 ```
 
-### Dev
+### Local development
 
 ```bash
 openclaw plugins install -l ~/.openclaw/workspace/openclaw-memory-brain
 openclaw gateway restart
 ```
 
-## Search
+## Commands
 
-Tool: `brain_memory_search({ query, limit })`
+### `/remember-brain <text>`
 
-Explicit save command: `/remember-brain <text>`
+Explicitly save a personal brain memory item.
 
-## Capture Rules (default)
+```
+/remember-brain TypeScript 5.5 requires explicit return types on exported functions
+```
 
-Convention: brain-memory should **not** silently store lots of chat.
+Returns a confirmation message. If `redactSecrets` is enabled (default), any detected secrets are automatically redacted before storage and the response notes it.
 
-Captures a message when:
-- length >= `minChars` (default 80)
-- AND it contains an explicit trigger (recommended format: **"Merke dir:"**)
+### `/search-brain <query> [limit]`
 
-If you want more aggressive capture, set `requireExplicit: false` (not recommended for OPSEC).
+Search brain memory items by semantic similarity.
 
-## Config
+```
+/search-brain TypeScript configuration
+/search-brain architecture decisions 10
+```
+
+- `query` - the search text (required)
+- `limit` - maximum number of results (optional, default 5, max 20)
+
+The trailing argument is interpreted as a limit if it is a bare number. Returns scored results sorted by relevance.
+
+### `/list-brain [limit]`
+
+List the most recent brain memory items.
+
+```
+/list-brain
+/list-brain 20
+```
+
+- `limit` - maximum number of items to return (optional, default 10, max 50)
+
+Returns items in insertion order (oldest first), showing date and a truncated preview.
+
+### `/forget-brain <id>`
+
+Delete a brain memory item by its unique ID. Requires authentication.
+
+```
+/forget-brain 550e8400-e29b-41d4-a716-446655440000
+```
+
+Returns a confirmation or a not-found message.
+
+## Tool: `brain_memory_search`
+
+An AI-callable tool for searching brain memories programmatically.
+
+### Input schema
+
+```json
+{
+  "query": "string (required) - the search text",
+  "limit": "number (optional, 1-20, default 5)"
+}
+```
+
+### Example call
+
+```json
+{ "query": "Anthropic reset schedule", "limit": 5 }
+```
+
+### Response format
+
+```json
+{
+  "hits": [
+    {
+      "score": 0.87,
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "createdAt": "2026-02-27T10:30:00.000Z",
+      "tags": ["brain"],
+      "text": "Remember: Anthropic resets usage limits on the 1st of each month."
+    }
+  ]
+}
+```
+
+Returns an empty `hits` array when no results match.
+
+## Auto-capture (message_received hook)
+
+The plugin listens on the `message_received` event and conditionally captures inbound messages as memory items.
+
+### Capture rules (defaults)
+
+A message is captured when **all** of the following are true:
+
+1. Message length >= `minChars` (default: 80 characters)
+2. At least one of:
+   - The message contains an **explicit trigger** (e.g. "remember this:", "keep this")
+   - `requireExplicit` is `false` AND the message contains an **auto-topic** keyword (e.g. "decision")
+
+Convention: brain-memory should **not** silently store large amounts of chat. The recommended default is `requireExplicit: true`.
+
+### Trigger matching
+
+- Case-insensitive substring matching
+- Default explicit triggers: `merke dir`, `merke dir:`, `remember this`, `remember this:`, `notiere`, `keep this`
+- Default auto-topics: `entscheidung`, `decision`
+
+## Configuration
+
+All configuration is provided via `openclaw.plugin.json` or the plugin config block.
 
 ```json
 {
@@ -49,6 +144,7 @@ If you want more aggressive capture, set `requireExplicit: false` (not recommend
           "storePath": "~/.openclaw/workspace/memory/brain-memory.jsonl",
           "dims": 256,
           "redactSecrets": true,
+          "maxItems": 5000,
           "capture": {
             "minChars": 80,
             "requireExplicit": true,
@@ -62,3 +158,38 @@ If you want more aggressive capture, set `requireExplicit: false` (not recommend
   }
 }
 ```
+
+### Configuration options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `true` | Enable or disable the plugin entirely |
+| `storePath` | string | `~/.openclaw/workspace/memory/brain-memory.jsonl` | Path to the JSONL storage file (must be inside home directory) |
+| `dims` | number | `256` | Embedding vector dimensions (32-2048) |
+| `redactSecrets` | boolean | `true` | Redact detected secrets (API keys, tokens, passwords) before storage |
+| `maxItems` | number | `5000` | Maximum number of memory items to keep (oldest are evicted, 100-100000) |
+| `defaultTags` | string[] | `["brain"]` | Default tags applied to all captured items |
+| `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
+| `capture.requireExplicit` | boolean | `true` | When true, only explicit triggers cause capture (recommended) |
+| `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture |
+| `capture.autoTopics` | string[] | `["entscheidung", "decision"]` | Topic keywords that trigger capture when `requireExplicit` is false |
+
+## Safety
+
+- The plugin redacts common secrets (API keys, tokens, passwords, private key blocks, JWTs, connection strings) before storage.
+- Redaction uses pattern-based detection and never stores matched secret values - only the rule name and count.
+- The store path is validated to stay inside the user's home directory (path traversal guard).
+- PII is only stored locally on disk in the JSONL file - no external transmission.
+
+## Development
+
+```bash
+npm install
+npm run build    # TypeScript type-check (noEmit)
+npm test         # Run vitest test suite
+npm run test:watch  # Watch mode
+```
+
+## License
+
+MIT
