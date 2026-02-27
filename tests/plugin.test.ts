@@ -82,7 +82,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("register() - plugin setup", () => {
-  it("registers all four commands and one tool", () => {
+  it("registers all five commands and one tool", () => {
     const api = createMockApi({ storePath: tempStorePath() });
     register(api);
 
@@ -90,6 +90,7 @@ describe("register() - plugin setup", () => {
     expect(api._commands.has("search-brain")).toBe(true);
     expect(api._commands.has("list-brain")).toBe(true);
     expect(api._commands.has("forget-brain")).toBe(true);
+    expect(api._commands.has("tags-brain")).toBe(true);
     expect(api._tools.has("brain_memory_search")).toBe(true);
   });
 
@@ -123,7 +124,7 @@ describe("register() - plugin setup", () => {
     register(api);
 
     // Plugin should still register everything with defaults
-    expect(api._commands.size).toBe(4);
+    expect(api._commands.size).toBe(5);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -146,11 +147,18 @@ describe("/remember-brain command", () => {
     const cmd = api._commands.get("remember-brain")!;
     const result = await cmd.handler({});
     expect(result.text).toContain("Usage");
+    expect(result.text).toContain("--tags");
   });
 
   it("returns usage text when args are empty string", async () => {
     const cmd = api._commands.get("remember-brain")!;
     const result = await cmd.handler({ args: "   " });
+    expect(result.text).toContain("Usage");
+  });
+
+  it("returns usage text when only --tags is provided without text", async () => {
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({ args: "--tags project,work" });
     expect(result.text).toContain("Usage");
   });
 
@@ -393,15 +401,17 @@ describe("brain_memory_search tool", () => {
     expect(data.hits.length).toBeLessThanOrEqual(5);
   });
 
-  it("has correct inputSchema definition", () => {
+  it("has correct inputSchema definition including tags", () => {
     const tool = api._tools.get("brain_memory_search")!;
     const schema = tool.inputSchema as Record<string, unknown>;
     expect(schema.type).toBe("object");
     const props = schema.properties as Record<string, unknown>;
     expect(props).toHaveProperty("query");
     expect(props).toHaveProperty("limit");
+    expect(props).toHaveProperty("tags");
     const required = schema.required as string[];
     expect(required).toContain("query");
+    expect(required).not.toContain("tags");
   });
 });
 
@@ -843,6 +853,7 @@ describe("command metadata", () => {
     expect(cmd.name).toBe("remember-brain");
     expect(cmd.description).toBeTruthy();
     expect(cmd.usage).toContain("/remember-brain");
+    expect(cmd.usage).toContain("--tags");
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(true);
   });
@@ -852,6 +863,7 @@ describe("command metadata", () => {
     expect(cmd.name).toBe("search-brain");
     expect(cmd.description).toBeTruthy();
     expect(cmd.usage).toContain("/search-brain");
+    expect(cmd.usage).toContain("--tags");
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(true);
   });
@@ -861,6 +873,7 @@ describe("command metadata", () => {
     expect(cmd.name).toBe("list-brain");
     expect(cmd.description).toBeTruthy();
     expect(cmd.usage).toContain("/list-brain");
+    expect(cmd.usage).toContain("--tags");
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(true);
   });
@@ -872,5 +885,263 @@ describe("command metadata", () => {
     expect(cmd.usage).toContain("/forget-brain");
     expect(cmd.requireAuth).toBe(true);
     expect(cmd.acceptsArgs).toBe(true);
+  });
+
+  it("/tags-brain has correct metadata", () => {
+    const cmd = api._commands.get("tags-brain")!;
+    expect(cmd.name).toBe("tags-brain");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/tags-brain");
+    expect(cmd.requireAuth).toBe(false);
+    expect(cmd.acceptsArgs).toBe(false);
+  });
+});
+
+describe("tag-based filtering - /remember-brain --tags", () => {
+  let api: MockApi;
+
+  beforeEach(() => {
+    api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+  });
+
+  it("stores a memory with custom tags merged with defaults", async () => {
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Architecture decision about caching --tags arch,caching" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "Architecture caching" } as ToolCallParams);
+    const data = result as { hits: Array<{ tags: string[]; text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.tags).toContain("brain");
+    expect(data.hits[0]!.tags).toContain("arch");
+    expect(data.hits[0]!.tags).toContain("caching");
+  });
+
+  it("does not duplicate default tags when specified in --tags", async () => {
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Note about brain patterns --tags brain,extra" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "brain patterns" } as ToolCallParams);
+    const data = result as { hits: Array<{ tags: string[] }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    const tags = data.hits[0]!.tags;
+    expect(tags.filter((t) => t === "brain").length).toBe(1);
+    expect(tags).toContain("extra");
+  });
+
+  it("stores only default tags when --tags is not provided", async () => {
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Simple note without extra tags" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "Simple note" } as ToolCallParams);
+    const data = result as { hits: Array<{ tags: string[] }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.tags).toEqual(["brain"]);
+  });
+
+  it("strips the --tags flag from the stored text", async () => {
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Important API decision --tags api,decisions" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "Important API" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.text).not.toContain("--tags");
+    expect(data.hits[0]!.text).toContain("Important API decision");
+  });
+});
+
+describe("tag-based filtering - /search-brain --tags", () => {
+  let api: MockApi;
+
+  beforeEach(async () => {
+    api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "TypeScript project setup for team --tags typescript,setup" });
+    await cmd.handler({ args: "Decision about database choice for project --tags database,decisions" });
+    await cmd.handler({ args: "TypeScript coding standards reference --tags typescript,standards" });
+  });
+
+  it("filters search results by a single tag", async () => {
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "project --tags database" });
+    expect(result.text).toContain("Brain memory results");
+    expect(result.text).toContain("database");
+    expect(result.text).not.toContain("setup");
+  });
+
+  it("filters search results by multiple tags (AND logic)", async () => {
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "TypeScript --tags typescript,setup" });
+    expect(result.text).toContain("Brain memory results");
+    expect(result.text).toContain("setup");
+  });
+
+  it("returns no results when tag does not match any items", async () => {
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "TypeScript --tags nonexistent" });
+    expect(result.text).toContain("No brain memories found");
+  });
+
+  it("searches without filtering when --tags is not provided", async () => {
+    const cmd = api._commands.get("search-brain")!;
+    const result = await cmd.handler({ args: "TypeScript" });
+    expect(result.text).toContain("Brain memory results");
+  });
+});
+
+describe("tag-based filtering - /list-brain --tags", () => {
+  let api: MockApi;
+
+  beforeEach(async () => {
+    api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "First note about APIs --tags api" });
+    await cmd.handler({ args: "Second note about databases --tags database" });
+    await cmd.handler({ args: "Third note about API design --tags api,design" });
+  });
+
+  it("filters list by a single tag", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "--tags api" });
+    expect(result.text).toContain("Brain memories (2)");
+    expect(result.text).toContain("APIs");
+    expect(result.text).toContain("API design");
+  });
+
+  it("filters list by multiple tags (AND logic)", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "--tags api,design" });
+    expect(result.text).toContain("Brain memories (1)");
+    expect(result.text).toContain("API design");
+  });
+
+  it("returns empty message when no items match the tag filter", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "--tags nonexistent" });
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("lists all items when --tags is not provided", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Brain memories (3)");
+  });
+
+  it("combines --tags with a limit argument", async () => {
+    const cmd = api._commands.get("list-brain")!;
+    const result = await cmd.handler({ args: "--tags api 1" });
+    expect(result.text).toContain("Brain memories (1)");
+  });
+});
+
+describe("tag-based filtering - brain_memory_search tool with tags", () => {
+  let api: MockApi;
+
+  beforeEach(async () => {
+    api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("remember-brain")!;
+    await cmd.handler({ args: "Microservices architecture overview --tags arch,microservices" });
+    await cmd.handler({ args: "Monolith architecture patterns --tags arch,monolith" });
+    await cmd.handler({ args: "Database migration guide --tags database,guide" });
+  });
+
+  it("filters tool results by tags", async () => {
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "architecture", tags: ["arch", "microservices"] } as ToolCallParams);
+    const data = result as { hits: Array<{ tags: string[]; text: string }> };
+    expect(data.hits.length).toBe(1);
+    expect(data.hits[0]!.text).toContain("Microservices");
+  });
+
+  it("returns all matching items when tags is an empty array", async () => {
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "architecture", tags: [] } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns all matching items when tags is not provided", async () => {
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "architecture" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns no hits when tags do not match any item", async () => {
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "architecture", tags: ["nonexistent"] } as ToolCallParams);
+    const data = result as { hits: unknown[] };
+    expect(data.hits.length).toBe(0);
+  });
+});
+
+describe("/tags-brain command", () => {
+  it("returns no-tags message when store is empty", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("tags-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No tags found");
+  });
+
+  it("lists all unique tags sorted alphabetically", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note one --tags zebra,alpha" });
+    await rememberCmd.handler({ args: "Note two --tags beta,alpha" });
+
+    const cmd = api._commands.get("tags-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Tags (4)");
+    expect(result.text).toContain("alpha");
+    expect(result.text).toContain("beta");
+    expect(result.text).toContain("brain");
+    expect(result.text).toContain("zebra");
+    // Verify alphabetical order
+    const tagsPart = result.text.split(": ").slice(1).join(": ");
+    const tagList = tagsPart.split(", ");
+    expect(tagList).toEqual([...tagList].sort());
+  });
+
+  it("includes default tags in the listing", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Simple note without extra tags" });
+
+    const cmd = api._commands.get("tags-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Tags (1)");
+    expect(result.text).toContain("brain");
+  });
+
+  it("deduplicates tags across multiple items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note A --tags shared" });
+    await rememberCmd.handler({ args: "Note B --tags shared" });
+    await rememberCmd.handler({ args: "Note C --tags shared,unique" });
+
+    const cmd = api._commands.get("tags-brain")!;
+    const result = await cmd.handler({});
+    // brain (default) + shared + unique = 3 unique tags
+    expect(result.text).toContain("Tags (3)");
   });
 });

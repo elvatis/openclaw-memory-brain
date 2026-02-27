@@ -56,26 +56,36 @@ export default function register(api: PluginApi) {
     return needles.some((n) => s.includes(n.toLowerCase()));
   }
 
+  function parseTags(raw: string): { tags: string[]; rest: string } {
+    const match = raw.match(/--tags\s+(\S+)/);
+    if (!match) return { tags: [], rest: raw };
+    const tags = match[1]!.split(",").map((t) => t.trim()).filter(Boolean);
+    const rest = raw.replace(/--tags\s+\S+/, "").replace(/\s+/g, " ").trim();
+    return { tags, rest };
+  }
+
   api.logger?.info?.(`[memory-brain] enabled. store=${storePath}`);
 
   // Tool: brain_memory_search
   api.registerTool({
     name: "brain_memory_search",
-    description: "Search personal brain memory items (local JSONL store)",
+    description: "Search personal brain memory items (local JSONL store). Optionally filter by tags (AND logic).",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         query: { type: "string" },
-        limit: { type: "number", minimum: 1, maximum: 20, default: 5 }
+        limit: { type: "number", minimum: 1, maximum: 20, default: 5 },
+        tags: { type: "array", items: { type: "string" }, description: "Filter results to items that have ALL of these tags" }
       },
       required: ["query"]
     },
     handler: async (params: ToolCallParams) => {
       const q = String(params['query'] ?? "").trim();
       const limit = safeLimit(params['limit'], 5, 20);
+      const tags = Array.isArray(params['tags']) ? (params['tags'] as string[]).filter(Boolean) : [];
       if (!q) return { hits: [] };
-      const hits = await store.search(q, { limit });
+      const hits = await store.search(q, { limit, ...(tags.length > 0 ? { tags } : {}) });
       return {
         hits: hits.map((h) => ({
           score: h.score,
@@ -88,24 +98,28 @@ export default function register(api: PluginApi) {
     }
   });
 
-  // Command: /remember-brain <text>
+  // Command: /remember-brain <text> [--tags tag1,tag2]
   api.registerCommand({
     name: "remember-brain",
-    description: "Save a personal brain memory item (explicit capture)",
-    usage: "/remember-brain <text>",
+    description: "Save a personal brain memory item (explicit capture). Use --tags tag1,tag2 to add custom tags.",
+    usage: "/remember-brain <text> [--tags tag1,tag2]",
     requireAuth: false,
     acceptsArgs: true,
     handler: async (ctx: CommandContext) => {
-      const text = String(ctx?.args ?? "").trim();
-      if (!text) return { text: "Usage: /remember-brain <text>" };
+      const raw = String(ctx?.args ?? "").trim();
+      if (!raw) return { text: "Usage: /remember-brain <text> [--tags tag1,tag2]" };
 
+      const { tags: extraTags, rest: text } = parseTags(raw);
+      if (!text) return { text: "Usage: /remember-brain <text> [--tags tag1,tag2]" };
+
+      const mergedTags = [...defaultTags, ...extraTags.filter((t) => !defaultTags.includes(t))];
       const r = redactSecrets ? redactor.redact(text) : { redactedText: text, hadSecrets: false, matches: [] };
       const item: MemoryItem = {
         id: uuid(),
         kind: "note",
         text: r.redactedText,
         createdAt: new Date().toISOString(),
-        tags: defaultTags,
+        tags: mergedTags,
         source: {
           channel: ctx?.channel,
           from: ctx?.from,
@@ -121,15 +135,17 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Command: /search-brain <query>
+  // Command: /search-brain <query> [--tags tag1,tag2] [limit]
   api.registerCommand({
     name: "search-brain",
-    description: "Search brain memory items by query",
-    usage: "/search-brain <query> [limit]",
+    description: "Search brain memory items by query. Use --tags tag1,tag2 to filter by tags (AND logic).",
+    usage: "/search-brain <query> [--tags tag1,tag2] [limit]",
     requireAuth: false,
     acceptsArgs: true,
     handler: async (ctx: CommandContext) => {
-      const args = String(ctx?.args ?? "").trim().split(/\s+/);
+      const raw = String(ctx?.args ?? "").trim();
+      const { tags, rest } = parseTags(raw);
+      const args = rest.split(/\s+/).filter(Boolean);
       // Support optional trailing --limit N or just a bare number as last arg.
       const lastArg = args[args.length - 1] ?? "";
       const maybeLimit = Number(lastArg);
@@ -142,8 +158,8 @@ export default function register(api: PluginApi) {
         limit = 5;
         query = args.join(" ");
       }
-      if (!query) return { text: "Usage: /search-brain <query> [limit]" };
-      const hits = await store.search(query, { limit });
+      if (!query) return { text: "Usage: /search-brain <query> [--tags tag1,tag2] [limit]" };
+      const hits = await store.search(query, { limit, ...(tags.length > 0 ? { tags } : {}) });
       if (hits.length === 0) return { text: `No brain memories found for: ${query}` };
       const lines = hits.map((h, n) =>
         `${n + 1}. [score:${h.score.toFixed(2)}] ${h.item.text.slice(0, 120)}${h.item.text.length > 120 ? "…" : ""}`
@@ -152,21 +168,42 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Command: /list-brain [limit]
+  // Command: /list-brain [--tags tag1,tag2] [limit]
   api.registerCommand({
     name: "list-brain",
-    description: "List the most recent brain memory items",
-    usage: "/list-brain [limit]",
+    description: "List the most recent brain memory items. Use --tags tag1,tag2 to filter by tags (AND logic).",
+    usage: "/list-brain [--tags tag1,tag2] [limit]",
     requireAuth: false,
     acceptsArgs: true,
     handler: async (ctx: CommandContext) => {
-      const limit = safeLimit(String(ctx?.args ?? "").trim(), 10, 50);
-      const items = await store.list({ limit });
+      const raw = String(ctx?.args ?? "").trim();
+      const { tags, rest } = parseTags(raw);
+      const limit = safeLimit(rest, 10, 50);
+      const items = await store.list({ limit, ...(tags.length > 0 ? { tags } : {}) });
       if (items.length === 0) return { text: "No brain memories stored yet." };
       const lines = items.map((i, n) =>
         `${n + 1}. [${i.createdAt.slice(0, 10)}] ${i.text.slice(0, 120)}${i.text.length > 120 ? "…" : ""}`
       );
       return { text: `Brain memories (${items.length}):\n${lines.join("\n")}` };
+    },
+  });
+
+  // Command: /tags-brain
+  api.registerCommand({
+    name: "tags-brain",
+    description: "List all unique tags across all brain memory items",
+    usage: "/tags-brain",
+    requireAuth: false,
+    acceptsArgs: false,
+    handler: async () => {
+      const items = await store.list({ limit: 5000 });
+      const tagSet = new Set<string>();
+      for (const item of items) {
+        for (const tag of item.tags ?? []) tagSet.add(tag);
+      }
+      if (tagSet.size === 0) return { text: "No tags found." };
+      const sorted = [...tagSet].sort();
+      return { text: `Tags (${sorted.length}): ${sorted.join(", ")}` };
     },
   });
 

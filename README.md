@@ -26,42 +26,59 @@ openclaw gateway restart
 
 ## Commands
 
-### `/remember-brain <text>`
+### `/remember-brain <text> [--tags tag1,tag2]`
 
-Explicitly save a personal brain memory item.
+Explicitly save a personal brain memory item. Optionally add custom tags.
 
 ```
 /remember-brain TypeScript 5.5 requires explicit return types on exported functions
+/remember-brain Use Redis for session caching --tags arch,caching
 ```
 
-Returns a confirmation message. If `redactSecrets` is enabled (default), any detected secrets are automatically redacted before storage and the response notes it.
+Custom tags are merged with the configured `defaultTags` (duplicates are removed automatically). Returns a confirmation message. If `redactSecrets` is enabled (default), any detected secrets are automatically redacted before storage and the response notes it.
 
-### `/search-brain <query> [limit]`
+### `/search-brain <query> [--tags tag1,tag2] [limit]`
 
-Search brain memory items by semantic similarity.
+Search brain memory items by semantic similarity. Optionally filter by tags (AND logic - items must have ALL specified tags).
 
 ```
 /search-brain TypeScript configuration
 /search-brain architecture decisions 10
+/search-brain caching strategy --tags arch
+/search-brain API design --tags api,design 5
 ```
 
 - `query` - the search text (required)
+- `--tags tag1,tag2` - filter by tags, comma-separated (optional, AND logic)
 - `limit` - maximum number of results (optional, default 5, max 20)
 
 The trailing argument is interpreted as a limit if it is a bare number and more than one argument is present. A sole numeric argument is treated as the query itself. Returns scored results sorted by relevance.
 
-### `/list-brain [limit]`
+### `/list-brain [--tags tag1,tag2] [limit]`
 
-List the most recent brain memory items.
+List the most recent brain memory items. Optionally filter by tags (AND logic).
 
 ```
 /list-brain
 /list-brain 20
+/list-brain --tags arch
+/list-brain --tags api,design 10
 ```
 
+- `--tags tag1,tag2` - filter by tags, comma-separated (optional, AND logic)
 - `limit` - maximum number of items to return (optional, default 10, max 50)
 
 Returns items in insertion order (oldest first), showing date and a truncated preview.
+
+### `/tags-brain`
+
+List all unique tags across all brain memory items, sorted alphabetically.
+
+```
+/tags-brain
+```
+
+Returns a comma-separated list of all tags with a count, e.g. `Tags (4): api, arch, brain, design`.
 
 ### `/forget-brain <id>`
 
@@ -75,21 +92,23 @@ Returns a confirmation or a not-found message.
 
 ## Tool: `brain_memory_search`
 
-An AI-callable tool for searching brain memories programmatically.
+An AI-callable tool for searching brain memories programmatically. Supports optional tag-based filtering.
 
 ### Input schema
 
 ```json
 {
   "query": "string (required) - the search text",
-  "limit": "number (optional, 1-20, default 5)"
+  "limit": "number (optional, 1-20, default 5)",
+  "tags": "string[] (optional) - filter results to items that have ALL of these tags"
 }
 ```
 
-### Example call
+### Example calls
 
 ```json
 { "query": "Anthropic reset schedule", "limit": 5 }
+{ "query": "caching strategy", "tags": ["arch", "caching"] }
 ```
 
 ### Response format
@@ -188,7 +207,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (58 tests)
+npm test            # Run vitest test suite (81 tests)
 npm run test:watch  # Watch mode
 ```
 
@@ -197,11 +216,13 @@ npm run test:watch  # Watch mode
 The test suite covers all plugin functionality:
 
 - Plugin registration (commands, tool, event handler, disabled state, invalid config)
-- `/remember-brain` (save, usage, empty args, secret redaction, source context)
-- `/search-brain` (query, usage, no-match, trailing limit, sole numeric arg)
-- `/list-brain` (empty store, populated listing, limit argument, default limit)
+- `/remember-brain` (save, usage, empty args, secret redaction, source context, --tags flag, tag merging)
+- `/search-brain` (query, usage, no-match, trailing limit, sole numeric arg, --tags filtering)
+- `/list-brain` (empty store, populated listing, limit argument, default limit, --tags filtering)
 - `/forget-brain` (usage, not-found, delete + verify, requireAuth)
-- `brain_memory_search` tool (result shape, empty/undefined query, limit, schema)
+- `/tags-brain` (empty store, unique tag listing, deduplication, alphabetical sort)
+- `brain_memory_search` tool (result shape, empty/undefined query, limit, schema, tags parameter)
+- Tag-based filtering (AND logic, single tag, multiple tags, no-match tag, empty tags, merged tags with defaults)
 - Auto-capture (explicit trigger, auto-topic, short message rejection, no-trigger rejection, requireExplicit enforcement, empty content, case-insensitivity, secret redaction, error handling, custom minChars, custom triggers)
 - Custom configuration (defaultTags, custom autoTopics, redactSecrets toggle)
 - Output formatting (text truncation at 120 chars, ellipsis behavior)

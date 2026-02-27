@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "docs-update-2026-02-27",
-    "timestamp": "2026-02-27T04:10:00.000Z",
-    "commit": "b10a2df",
+    "session_id": "tag-filtering-2026-02-27",
+    "timestamp": "2026-02-27T04:30:00.000Z",
+    "commit": "pending",
     "phase": "implementation",
-    "duration_minutes": 3
+    "duration_minutes": 15
   },
   "files": {
     "STATUS.md": {
@@ -39,7 +39,7 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "Documentation updated (README, SKILL.md, openclaw.plugin.json). T-003 done. 58 tests passing. Next: T-004 (tag filtering), T-005 (export/import), T-006 (retention).",
+  "quick_context": "Tag-based filtering implemented (T-004 done). 81 tests passing. Commands support --tags flag for filtering/tagging. New /tags-brain command. Next: T-005 (export/import), T-006 (retention).",
   "next_task_id": 7,
   "tasks": {
     "T-001": {
@@ -66,17 +66,18 @@
       "depends_on": [],
       "created": "2026-02-27T00:00:00Z",
       "github_issue": 8,
-      "completed": "2026-02-27T04:10:00.000Z"
+      "completed": "2026-02-27T03:11:17.489Z"
     },
     "T-004": {
       "title": "Add tag-based filtering (#5)",
-      "status": "ready",
+      "status": "done",
       "priority": "medium",
       "depends_on": [
         "T-002"
       ],
       "created": "2026-02-27T00:00:00Z",
-      "github_issue": 5
+      "github_issue": 5,
+      "completed": "2026-02-27T04:30:00.000Z"
     },
     "T-005": {
       "title": "Add export/import commands (#6)",
