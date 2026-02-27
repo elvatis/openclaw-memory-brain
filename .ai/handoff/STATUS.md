@@ -1,6 +1,6 @@
 # openclaw-memory-brain: Current State of the Nation
 
-> Last updated: 2026-02-27 by Claude Opus 4.6 (unit tests implementation)
+> Last updated: 2026-02-27 by Claude Opus 4.6 (documentation update)
 > Commit: pending (this session)
 >
 > **Rule:** This file is rewritten (not appended) at the end of every session.
@@ -39,7 +39,6 @@
 
 | Gap | Severity | Description |
 |-----|----------|-------------|
-| Documentation | HIGH | README/SKILL.md outdated - missing v0.1.2 commands (#8) |
 | Tag filtering | MEDIUM | No way to filter by tags in search/list (#5) |
 | Export/import | MEDIUM | No backup or migration tooling (#6) |
 | Retention policy | LOW | No time-based cleanup for old memories (#7) |
@@ -48,7 +47,7 @@
 
 ## v0.2 Roadmap Status
 
-The v0.2 roadmap is **defined and tracked** via 5 GitHub issues (#4-#8). Unit test suite (#4) is now complete. Feature tasks (#5, #6, #7) are unblocked.
+The v0.2 roadmap is **defined and tracked** via 5 GitHub issues (#4-#8). Unit test suite (#4) and documentation (#8) are complete. Feature tasks (#5, #6, #7) are unblocked and ready.
 
 ---
 
@@ -56,6 +55,7 @@ The v0.2 roadmap is **defined and tracked** via 5 GitHub issues (#4-#8). Unit te
 
 | Item | Resolution |
 |------|-----------|
+| Documentation update (T-003, #8) | README, SKILL.md, openclaw.plugin.json synced with v0.1.2 code (2026-02-27) |
 | Unit test suite (T-002, #4) | 58 tests covering all commands, tool, auto-capture, config, edge cases (2026-02-27) |
 | v0.2 roadmap definition (T-001) | 5 GitHub issues created, DASHBOARD updated (2026-02-27) |
 | v0.1.2 code improvements | Typed API, new commands, maxItems, error handling committed (2026-02-27) |

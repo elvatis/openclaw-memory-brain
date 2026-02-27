@@ -9,6 +9,7 @@ This is an **OpenClaw Gateway plugin** that behaves like a lightweight personal 
 - It listens to inbound messages and captures likely-valuable notes when certain triggers or topics occur.
 - It allows semantic-ish recall via a search tool and slash commands.
 - Everything is stored locally (JSONL) with optional secret redaction.
+- Oldest items are evicted when the configurable `maxItems` cap is reached.
 
 ## Commands
 
@@ -37,7 +38,7 @@ Search brain memory items by semantic similarity.
 /search-brain deployment process 10
 ```
 
-Response: Numbered list of results with similarity scores and text previews, or `No brain memories found for: <query>` when empty.
+Response: Numbered list of results with similarity scores and text previews, or `No brain memories found for: <query>` when empty. A sole numeric argument is treated as the query, not a limit.
 
 ### `/list-brain [limit]`
 
@@ -112,13 +113,13 @@ A message is captured when **all** of these conditions are met:
 1. The message content is not empty
 2. Message length >= `minChars` (default 80)
 3. At least one of:
-   - Contains an **explicit trigger** phrase (e.g. "remember this:", "keep this")
+   - Contains an **explicit trigger** phrase (e.g. "remember this", "keep this")
    - `requireExplicit` is `false` AND the message contains an **auto-topic** keyword (e.g. "decision")
 
 ### Trigger matching
 
-- Case-insensitive substring matching
-- Default explicit triggers: `merke dir`, `merke dir:`, `remember this`, `remember this:`, `notiere`, `keep this`
+- Case-insensitive substring matching (e.g. "merke dir" also matches "Merke dir:" naturally)
+- Default explicit triggers: `merke dir`, `remember this`, `notiere`, `keep this`
 - Default auto-topics: `entscheidung`, `decision`
 
 ### Convention
@@ -145,7 +146,7 @@ Full configuration reference via `openclaw.plugin.json`:
           "capture": {
             "minChars": 80,
             "requireExplicit": true,
-            "explicitTriggers": ["merke dir", "merke dir:", "remember this", "remember this:", "notiere", "keep this"],
+            "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
           "defaultTags": ["brain"]
@@ -168,7 +169,7 @@ Full configuration reference via `openclaw.plugin.json`:
 | `defaultTags` | string[] | `["brain"]` | Default tags for all captured items |
 | `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
 | `capture.requireExplicit` | boolean | `true` | Require explicit trigger phrases for capture |
-| `capture.explicitTriggers` | string[] | see config block | Trigger phrases for explicit capture |
+| `capture.explicitTriggers` | string[] | see config block | Trigger phrases for explicit capture (substring match, case-insensitive) |
 | `capture.autoTopics` | string[] | `["entscheidung", "decision"]` | Topic keywords for auto-capture |
 
 ## Safety

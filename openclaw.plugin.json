@@ -1,7 +1,7 @@
 {
   "id": "openclaw-memory-brain",
   "name": "OpenClaw Memory (Brain)",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Personal brain memory: lightweight automatic capture + semantic recall.",
   "configSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -26,7 +26,7 @@
           "explicitTriggers": {
             "type": "array",
             "items": { "type": "string" },
-            "default": ["merke dir", "merke dir:", "remember this", "remember this:", "notiere", "keep this"]
+            "default": ["merke dir", "remember this", "notiere", "keep this"]
           },
           "autoTopics": {
             "type": "array",

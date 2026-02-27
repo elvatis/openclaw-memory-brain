@@ -7,6 +7,7 @@ A lightweight OpenClaw Gateway plugin that acts as a personal brain:
 - Stores everything locally in a JSONL file with optional secret redaction.
 - Supports semantic-ish search via hash-based embeddings.
 - Provides slash commands for manual CRUD operations.
+- Enforces a configurable item cap (`maxItems`) with oldest-first eviction.
 
 ## Install
 
@@ -47,7 +48,7 @@ Search brain memory items by semantic similarity.
 - `query` - the search text (required)
 - `limit` - maximum number of results (optional, default 5, max 20)
 
-The trailing argument is interpreted as a limit if it is a bare number. Returns scored results sorted by relevance.
+The trailing argument is interpreted as a limit if it is a bare number and more than one argument is present. A sole numeric argument is treated as the query itself. Returns scored results sorted by relevance.
 
 ### `/list-brain [limit]`
 
@@ -117,17 +118,18 @@ The plugin listens on the `message_received` event and conditionally captures in
 
 A message is captured when **all** of the following are true:
 
-1. Message length >= `minChars` (default: 80 characters)
-2. At least one of:
-   - The message contains an **explicit trigger** (e.g. "remember this:", "keep this")
+1. Message content is not empty
+2. Message length >= `minChars` (default: 80 characters)
+3. At least one of:
+   - The message contains an **explicit trigger** (e.g. "remember this", "keep this")
    - `requireExplicit` is `false` AND the message contains an **auto-topic** keyword (e.g. "decision")
 
 Convention: brain-memory should **not** silently store large amounts of chat. The recommended default is `requireExplicit: true`.
 
 ### Trigger matching
 
-- Case-insensitive substring matching
-- Default explicit triggers: `merke dir`, `merke dir:`, `remember this`, `remember this:`, `notiere`, `keep this`
+- Case-insensitive substring matching (e.g. "merke dir" also matches "Merke dir:" naturally)
+- Default explicit triggers: `merke dir`, `remember this`, `notiere`, `keep this`
 - Default auto-topics: `entscheidung`, `decision`
 
 ## Configuration
@@ -148,7 +150,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
           "capture": {
             "minChars": 80,
             "requireExplicit": true,
-            "explicitTriggers": ["merke dir", "merke dir:", "remember this", "remember this:", "notiere", "keep this"],
+            "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
           "defaultTags": ["brain"]
@@ -171,7 +173,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 | `defaultTags` | string[] | `["brain"]` | Default tags applied to all captured items |
 | `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
 | `capture.requireExplicit` | boolean | `true` | When true, only explicit triggers cause capture (recommended) |
-| `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture |
+| `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture (substring match, case-insensitive) |
 | `capture.autoTopics` | string[] | `["entscheidung", "decision"]` | Topic keywords that trigger capture when `requireExplicit` is false |
 
 ## Safety
@@ -185,10 +187,32 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 
 ```bash
 npm install
-npm run build    # TypeScript type-check (noEmit)
-npm test         # Run vitest test suite
+npm run build       # TypeScript type-check (noEmit, strict mode)
+npm test            # Run vitest test suite (58 tests)
 npm run test:watch  # Watch mode
 ```
+
+### Test coverage
+
+The test suite covers all plugin functionality:
+
+- Plugin registration (commands, tool, event handler, disabled state, invalid config)
+- `/remember-brain` (save, usage, empty args, secret redaction, source context)
+- `/search-brain` (query, usage, no-match, trailing limit, sole numeric arg)
+- `/list-brain` (empty store, populated listing, limit argument, default limit)
+- `/forget-brain` (usage, not-found, delete + verify, requireAuth)
+- `brain_memory_search` tool (result shape, empty/undefined query, limit, schema)
+- Auto-capture (explicit trigger, auto-topic, short message rejection, no-trigger rejection, requireExplicit enforcement, empty content, case-insensitivity, secret redaction, error handling, custom minChars, custom triggers)
+- Custom configuration (defaultTags, custom autoTopics, redactSecrets toggle)
+- Output formatting (text truncation at 120 chars, ellipsis behavior)
+- Edge cases (sole numeric arg, whitespace-only arg, limit clamping, multiple captures)
+- Logger verification (startup info, capture info, error on invalid path)
+- Command metadata (name, description, usage, requireAuth, acceptsArgs)
+
+### Dependencies
+
+- **Runtime**: `@elvatis_com/openclaw-memory-core` (local linked package)
+- **Dev**: `typescript`, `vitest`, `@types/node`
 
 ## License
 
