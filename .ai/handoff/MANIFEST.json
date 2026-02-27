@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "retention-policy-2026-02-27",
-    "timestamp": "2026-02-27T04:06:28.777Z",
-    "commit": "a7afa32",
+    "session_id": "expand-unit-suite-2026-02-27",
+    "timestamp": "2026-02-27T08:46:00.000Z",
+    "commit": "pending",
     "phase": "implementation",
-    "duration_minutes": 2
+    "duration_minutes": 5
   },
   "files": {
     "STATUS.md": {
@@ -39,8 +39,8 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "Retention policy implemented (T-006 done). 119 tests passing. /purge-brain command with --dry-run, startup auto-cleanup, configurable retention.maxAgeDays. All v0.2 tasks complete.",
-  "next_task_id": 7,
+  "quick_context": "All v0.2 tasks complete. 148 tests passing. Expanded unit suite with retention edge cases, parseTags edge cases, capture metadata verification, import field preservation, config combinations, and tool parameter edge cases.",
+  "next_task_id": 8,
   "tasks": {
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
@@ -102,11 +102,12 @@
       "completed": "2026-02-27T04:06:28.777Z"
     },
     "T-007": {
-      "title": "Add time-based retention policy with automatic cleanup",
-      "status": "ready",
+      "title": "Expand unit test suite for retention, capture metadata, import/export, and edge cases",
+      "status": "done",
       "priority": "medium",
       "depends_on": [],
       "created": "2026-02-27T08:40:56Z",
+      "completed": "2026-02-27T08:46:00.000Z",
       "github_issue": "https://github.com/homeofe/openclaw-memory-brain/issues/7"
     }
   }
