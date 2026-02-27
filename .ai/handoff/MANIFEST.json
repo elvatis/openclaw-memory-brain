@@ -2,71 +2,93 @@
   "aahp_version": "3.0",
   "project": "openclaw-memory-brain",
   "last_session": {
-    "agent": "[model-name]",
-    "session_id": "[unique-session-id]",
-    "timestamp": "[ISO-8601]",
-    "commit": "[git-hash]",
-    "phase": "[research|architecture|implementation|review|fix]",
-    "duration_minutes": 0
+    "agent": "claude-opus-4.6",
+    "session_id": "roadmap-definition-2026-02-27",
+    "timestamp": "2026-02-27T00:00:00Z",
+    "commit": "e1676a4",
+    "phase": "planning",
+    "duration_minutes": 15
   },
   "files": {
     "STATUS.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[One-line summary of current system state]"
+      "updated": "2026-02-27T00:00:00Z",
+      "summary": "v0.1.2 active, v0.2 roadmap defined with 5 GitHub issues"
     },
     "NEXT_ACTIONS.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[N tasks. Top: X. Blocked: Y]"
+      "updated": "2026-02-27T00:00:00Z",
+      "summary": "6 tasks. Top: T-002 (unit tests). Blocked: T-004, T-005, T-006"
     },
     "LOG.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[Last entry: brief description]"
+      "updated": "2026-02-27T00:00:00Z",
+      "summary": "Last entry: v0.2 roadmap definition - 5 issues created"
     },
     "DASHBOARD.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[X/Y services green. Z blocked.]"
+      "updated": "2026-02-27T00:00:00Z",
+      "summary": "5 v0.2 issues tracked. T-001 completed. T-002 next."
     },
     "TRUST.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[Brief trust state overview]"
+      "updated": "2026-02-24T00:00:00Z",
+      "summary": "All properties untested"
     },
     "CONVENTIONS.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[Key conventions summary]"
+      "updated": "2026-02-24T00:00:00Z",
+      "summary": "English only, strict TS, no em dashes, tests required"
     },
     "WORKFLOW.md": {
-      "checksum": "sha256:[hash]",
-      "updated": "[ISO-8601]",
-      "lines": 0,
-      "summary": "[Pipeline summary]"
+      "updated": "2026-02-24T00:00:00Z",
+      "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "[2-3 sentences: What just happened, what's next, any blockers]",
-  "token_budget": {
-    "manifest_only": 0,
-    "manifest_plus_core": 0,
-    "full_read": 0
-  },
-  "next_task_id": 2,
+  "quick_context": "v0.2 roadmap is defined. 5 GitHub issues created (#4-#8). Next action: implement unit test suite (T-002, issue #4). All feature issues are blocked by tests.",
+  "next_task_id": 7,
   "tasks": {
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
-      "status": "ready",
+      "status": "completed",
       "priority": "medium",
       "depends_on": [],
-      "created": "2026-02-24T00:00:00Z"
+      "created": "2026-02-24T00:00:00Z",
+      "completed": "2026-02-27T00:00:00Z"
+    },
+    "T-002": {
+      "title": "Implement unit test suite (#4)",
+      "status": "ready",
+      "priority": "high",
+      "depends_on": [],
+      "created": "2026-02-27T00:00:00Z",
+      "github_issue": 4
+    },
+    "T-003": {
+      "title": "Update README and SKILL.md (#8)",
+      "status": "ready",
+      "priority": "high",
+      "depends_on": [],
+      "created": "2026-02-27T00:00:00Z",
+      "github_issue": 8
+    },
+    "T-004": {
+      "title": "Add tag-based filtering (#5)",
+      "status": "blocked",
+      "priority": "medium",
+      "depends_on": ["T-002"],
+      "created": "2026-02-27T00:00:00Z",
+      "github_issue": 5
+    },
+    "T-005": {
+      "title": "Add export/import commands (#6)",
+      "status": "blocked",
+      "priority": "medium",
+      "depends_on": ["T-002"],
+      "created": "2026-02-27T00:00:00Z",
+      "github_issue": 6
+    },
+    "T-006": {
+      "title": "Add retention policy (#7)",
+      "status": "blocked",
+      "priority": "low",
+      "depends_on": ["T-002"],
+      "created": "2026-02-27T00:00:00Z",
+      "github_issue": 7
     }
   }
 }
