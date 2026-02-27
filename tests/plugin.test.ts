@@ -605,6 +605,231 @@ describe("auto-capture (message_received hook)", () => {
   });
 });
 
+describe("custom configuration", () => {
+  it("applies custom defaultTags to stored items", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      defaultTags: ["project-x", "notes"],
+    });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Custom tagged note for the project" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "Custom tagged note" } as ToolCallParams);
+    const data = result as { hits: Array<{ tags: string[] }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.tags).toEqual(["project-x", "notes"]);
+  });
+
+  it("respects custom autoTopics configuration for capture", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, autoTopics: ["URGENT"] },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "This is URGENT and must be addressed immediately", from: "user" },
+      { messageProvider: "web", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("does not capture with custom autoTopics when default topics are used", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, autoTopics: ["URGENT"] },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // "decision" is a default topic but not in the custom list
+    await handler(
+      { content: "This is a decision about system architecture changes", from: "user" },
+      { messageProvider: "web", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("does not redact secrets in auto-capture when redactSecrets is false", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      redactSecrets: false,
+      capture: { minChars: 10 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    const secret = "AIzaSyExampleExampleExampleExample1234";
+    await handler(
+      { content: `remember this: my key is ${secret} ok`, from: "user" },
+      { messageProvider: "web", sessionId: "s1" },
+    );
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "key" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // Secret should NOT be redacted
+    expect(data.hits[0]!.text).toContain("AIzaSy");
+  });
+});
+
+describe("output formatting", () => {
+  it("/list-brain truncates text longer than 120 chars", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const longNote = "A".repeat(200);
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: longNote });
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    // Should contain the truncation ellipsis
+    expect(result.text).toContain("\u2026");
+    // Should not contain the full 200-char string
+    expect(result.text).not.toContain(longNote);
+  });
+
+  it("/search-brain truncates text longer than 120 chars", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const longNote = "B".repeat(200);
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: longNote });
+
+    const searchCmd = api._commands.get("search-brain")!;
+    const result = await searchCmd.handler({ args: "BBBBB" });
+    expect(result.text).toContain("\u2026");
+    expect(result.text).not.toContain(longNote);
+  });
+
+  it("/list-brain does not add ellipsis for short text", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Short note" });
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).not.toContain("\u2026");
+    expect(result.text).toContain("Short note");
+  });
+});
+
+describe("edge cases", () => {
+  it("/search-brain treats a sole numeric arg as the query, not a limit", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const searchCmd = api._commands.get("search-brain")!;
+    // Single arg "5" - since args.length is 1, it should be treated as query, not limit
+    const result = await searchCmd.handler({ args: "5" });
+    expect(result.text).toContain("No brain memories found for: 5");
+  });
+
+  it("/forget-brain returns usage for whitespace-only arg", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("forget-brain")!;
+    const result = await cmd.handler({ args: "   " });
+    expect(result.text).toContain("Usage");
+  });
+
+  it("brain_memory_search tool clamps limit above 20", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Test note for limit clamping verification" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    // Passing limit of 100 - should be clamped to 20
+    const result = await tool.handler({ query: "Test note", limit: 100 } as ToolCallParams);
+    const data = result as { hits: unknown[] };
+    // Should still work (clamped to 20, but we only have 1 item)
+    expect(data.hits.length).toBeLessThanOrEqual(20);
+  });
+
+  it("multiple auto-captures are counted correctly", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({ storePath, capture: { minChars: 10 } });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    for (let i = 1; i <= 3; i++) {
+      await handler(
+        { content: `remember this: note number ${i} about things`, from: "user" },
+        { messageProvider: "web", sessionId: "s1" },
+      );
+    }
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (3)");
+  });
+});
+
+describe("logger verification", () => {
+  it("logs info message on startup", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+    expect(api.logger?.info).toHaveBeenCalledWith(
+      expect.stringContaining("[memory-brain] enabled"),
+    );
+  });
+
+  it("logs info on successful auto-capture", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({ storePath, capture: { minChars: 10 } });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: important note for logging test", from: "user" },
+      { messageProvider: "web", sessionId: "s1" },
+    );
+
+    expect(api.logger?.info).toHaveBeenCalledWith(
+      expect.stringContaining("[memory-brain] captured memory"),
+    );
+  });
+
+  it("logs error on invalid storePath rejection", () => {
+    const api = createMockApi({ storePath: "/etc/passwd" });
+    register(api);
+    expect(api.logger?.error).toHaveBeenCalledWith(
+      expect.stringContaining("[memory-brain]"),
+    );
+  });
+});
+
 describe("command metadata", () => {
   let api: MockApi;
 

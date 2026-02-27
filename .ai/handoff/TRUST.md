@@ -20,10 +20,10 @@
 
 | Property | Status | Last Verified | Agent | Notes |
 |----------|--------|---------------|-------|-------|
-| `build` passes | untested | - | - | |
-| `test` passes | untested | - | - | |
-| `lint` passes | untested | - | - | |
-| `type-check` passes | untested | - | - | |
+| `build` passes | verified | 2026-02-27 | claude-opus-4.6 | `tsc --noEmit` clean |
+| `test` passes | verified | 2026-02-27 | claude-opus-4.6 | 58 tests, all passing |
+| `lint` passes | untested | - | - | No linter configured |
+| `type-check` passes | verified | 2026-02-27 | claude-opus-4.6 | Strict mode, zero errors |
 
 ---
 
@@ -31,10 +31,10 @@
 
 | Property | Status | Last Verified | Agent | Notes |
 |----------|--------|---------------|-------|-------|
-| Plugin registers correctly | untested | - | - | |
-| memory-core dependency resolves | untested | - | - | |
-| Commands work end-to-end | untested | - | - | |
-| No PII leaks in output | untested | - | - | |
+| Plugin registers correctly | verified | 2026-02-27 | claude-opus-4.6 | 5 tests in "register()" suite |
+| memory-core dependency resolves | verified | 2026-02-27 | claude-opus-4.6 | All 58 tests import and use it |
+| Commands work end-to-end | verified | 2026-02-27 | claude-opus-4.6 | All 4 commands tested with real store |
+| No PII leaks in output | verified | 2026-02-27 | claude-opus-4.6 | Redaction tested in commands and auto-capture |
 
 ---
 
@@ -43,7 +43,7 @@
 | Property | Status | Last Verified | Agent | Notes |
 |----------|--------|---------------|-------|-------|
 | No secrets in source | assumed | - | - | Pre-commit hooks configured |
-| No PII written to disk unredacted | untested | - | - | |
+| No PII written to disk unredacted | verified | 2026-02-27 | claude-opus-4.6 | DefaultRedactor tested, redaction confirmed |
 | Dependency audit clean | untested | - | - | |
 
 ---

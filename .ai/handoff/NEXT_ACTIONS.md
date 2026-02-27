@@ -6,35 +6,6 @@
 
 ---
 
-## T-002: Implement unit test suite (GitHub #4)
-
-**Goal:** Create a comprehensive unit test suite for all commands, the search tool, and auto-capture logic.
-
-**Context:**
-- v0.1.2 is in place with 5 commands and auto-capture
-- Zero tests exist currently
-- CONVENTIONS.md requires tests before every commit
-- This unblocks all other v0.2 work
-
-**What to do:**
-1. Add vitest as a dev dependency
-2. Create `index.test.ts` with mocks for PluginApi, JsonlMemoryStore, DefaultRedactor, HashEmbedder
-3. Test brain_memory_search tool (happy path, empty query, limit clamping)
-4. Test /remember-brain (save, redaction, empty args)
-5. Test /search-brain (query parsing, trailing limit, empty results)
-6. Test /list-brain (default limit, custom limit, empty store)
-7. Test /forget-brain (success, nonexistent ID)
-8. Test message_received auto-capture (explicit triggers, topic triggers, minChars, requireExplicit, error handling)
-9. Test config edge cases (enabled=false, invalid storePath)
-10. Aim for >80% line coverage
-
-**Definition of done:**
-- [ ] `index.test.ts` exists with tests for all commands and auto-capture
-- [ ] `vitest` configured and passing
-- [ ] Coverage >80% on index.ts
-
----
-
 ## T-003: Update README and SKILL.md (GitHub #8)
 
 **Goal:** Document all v0.1.2 commands and configuration options.
@@ -57,27 +28,34 @@
 
 ---
 
-## T-004: Add tag-based filtering (GitHub #5) [blocked by T-002]
+## T-004: Add tag-based filtering (GitHub #5)
 
 **Goal:** Allow filtering search and list results by tag.
 
-**Blocked by:** T-002 (need tests in place before adding features)
+**Context:**
+- Tests are now in place (T-002 complete, 58 tests)
+- Add `tags` filter parameter to /search-brain and /list-brain
+- Add tests for the new filtering logic
 
 ---
 
-## T-005: Add export/import commands (GitHub #6) [blocked by T-002]
+## T-005: Add export/import commands (GitHub #6)
 
 **Goal:** Add /export-brain and /import-brain for backup and portability.
 
-**Blocked by:** T-002 (need tests in place before adding features)
+**Context:**
+- Tests are now in place (T-002 complete, 58 tests)
+- Add tests for the new commands
 
 ---
 
-## T-006: Add retention policy (GitHub #7) [blocked by T-002]
+## T-006: Add retention policy (GitHub #7)
 
 **Goal:** Add time-based cleanup with configurable maxAgeDays.
 
-**Blocked by:** T-002 (need tests in place before adding features)
+**Context:**
+- Tests are now in place (T-002 complete, 58 tests)
+- Add tests for the retention logic
 
 ---
 
@@ -85,6 +63,7 @@
 
 | Item | Resolution |
 |------|-----------|
+| T-002: Implement unit test suite (#4) | 58 tests covering all commands, tool, auto-capture, config, edge cases (2026-02-27) |
 | T-001: Define v0.2 roadmap | 5 GitHub issues created (#4-#8), DASHBOARD updated (2026-02-27) |
 | Initial scaffold | Created 2026-02-24 |
 

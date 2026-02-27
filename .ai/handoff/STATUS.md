@@ -1,7 +1,7 @@
 # openclaw-memory-brain: Current State of the Nation
 
-> Last updated: 2026-02-27 by Claude Opus 4.6 (roadmap definition)
-> Commit: e1676a4
+> Last updated: 2026-02-27 by Claude Opus 4.6 (unit tests implementation)
+> Commit: pending (this session)
 >
 > **Rule:** This file is rewritten (not appended) at the end of every session.
 > It reflects the *current* reality, not history. History lives in LOG.md.
@@ -12,10 +12,10 @@
 
 | Check | Result | Notes |
 |-------|--------|-------|
-| `build` | Unknown | Not yet verified |
-| `test` | N/A | No tests exist yet (issue #4) |
-| `lint` | Unknown | Not yet verified |
-| `type-check` | Unknown | Not yet verified |
+| `build` | OK | `tsc --noEmit` passes cleanly |
+| `test` | OK | 58 tests, all passing (vitest) |
+| `lint` | N/A | No linter configured |
+| `type-check` | OK | Strict mode, no errors |
 
 ---
 
@@ -23,7 +23,7 @@
 
 | Component | Location | State |
 |-----------|----------|-------|
-| Local dev | `node index.ts` via openclaw | Unknown |
+| Local dev | `node index.ts` via openclaw | Active |
 
 ---
 
@@ -39,7 +39,6 @@
 
 | Gap | Severity | Description |
 |-----|----------|-------------|
-| Unit tests | HIGH | Zero test coverage - blocks confident development (#4) |
 | Documentation | HIGH | README/SKILL.md outdated - missing v0.1.2 commands (#8) |
 | Tag filtering | MEDIUM | No way to filter by tags in search/list (#5) |
 | Export/import | MEDIUM | No backup or migration tooling (#6) |
@@ -49,7 +48,7 @@
 
 ## v0.2 Roadmap Status
 
-The v0.2 roadmap is now **defined and tracked** via 5 GitHub issues (#4-#8). See DASHBOARD.md for implementation order and task dependencies.
+The v0.2 roadmap is **defined and tracked** via 5 GitHub issues (#4-#8). Unit test suite (#4) is now complete. Feature tasks (#5, #6, #7) are unblocked.
 
 ---
 
@@ -57,6 +56,7 @@ The v0.2 roadmap is now **defined and tracked** via 5 GitHub issues (#4-#8). See
 
 | Item | Resolution |
 |------|-----------|
+| Unit test suite (T-002, #4) | 58 tests covering all commands, tool, auto-capture, config, edge cases (2026-02-27) |
 | v0.2 roadmap definition (T-001) | 5 GitHub issues created, DASHBOARD updated (2026-02-27) |
 | v0.1.2 code improvements | Typed API, new commands, maxItems, error handling committed (2026-02-27) |
 | Initial scaffold | Created 2026-02-24 |
