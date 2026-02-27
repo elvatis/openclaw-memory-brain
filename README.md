@@ -1,6 +1,6 @@
 # openclaw-memory-brain
 
-OpenClaw plugin: **Personal Brain Memory** (v0.1.2).
+OpenClaw plugin: **Personal Brain Memory** (v0.2.0).
 
 A lightweight OpenClaw Gateway plugin that acts as a personal brain:
 - Listens for inbound messages and captures likely-valuable notes based on configurable triggers.
@@ -79,6 +79,45 @@ List all unique tags across all brain memory items, sorted alphabetically.
 ```
 
 Returns a comma-separated list of all tags with a count, e.g. `Tags (4): api, arch, brain, design`.
+
+### `/export-brain [--tags tag1,tag2]`
+
+Export brain memory items as JSON for backup or portability. Optionally filter by tags.
+
+```
+/export-brain
+/export-brain --tags arch,design
+```
+
+Returns a JSON object with a version envelope:
+
+```json
+{
+  "version": 1,
+  "exportedAt": "2026-02-27T10:30:00.000Z",
+  "count": 2,
+  "items": [...]
+}
+```
+
+The `items` array contains full `MemoryItem` objects with all fields preserved. Copy the output to a file for backup, or pass it to `/import-brain` on another instance.
+
+### `/import-brain <json>`
+
+Import brain memory items from a JSON export. Requires authentication. Accepts either:
+- A JSON array of memory items
+- An envelope object (as produced by `/export-brain`) with an `items` array
+
+```
+/import-brain [{"id":"...","kind":"note","text":"...","createdAt":"..."}]
+/import-brain {"version":1,"items":[...]}
+```
+
+- Items that already exist (by ID) are skipped automatically
+- Items missing an `id` field get a new UUID assigned
+- Items with an invalid or missing `kind` default to `"note"`
+- Items without `tags` receive the configured `defaultTags`
+- Returns a summary: `Imported N items. X skipped (already exist). Y skipped (invalid format).`
 
 ### `/forget-brain <id>`
 
@@ -207,7 +246,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (81 tests)
+npm test            # Run vitest test suite (105 tests)
 npm run test:watch  # Watch mode
 ```
 
@@ -221,6 +260,9 @@ The test suite covers all plugin functionality:
 - `/list-brain` (empty store, populated listing, limit argument, default limit, --tags filtering)
 - `/forget-brain` (usage, not-found, delete + verify, requireAuth)
 - `/tags-brain` (empty store, unique tag listing, deduplication, alphabetical sort)
+- `/export-brain` (empty store, JSON envelope format, MemoryItem fields, --tags filtering, valid JSON output)
+- `/import-brain` (usage, invalid JSON, invalid structure, empty array, bare array import, envelope import, duplicate skipping, invalid entry skipping, default tags, kind preservation, kind defaulting, UUID generation, requireAuth)
+- Export/import round-trip (data preservation, idempotent re-import)
 - `brain_memory_search` tool (result shape, empty/undefined query, limit, schema, tags parameter)
 - Tag-based filtering (AND logic, single tag, multiple tags, no-match tag, empty tags, merged tags with defaults)
 - Auto-capture (explicit trigger, auto-topic, short message rejection, no-trigger rejection, requireExplicit enforcement, empty content, case-insensitivity, secret redaction, error handling, custom minChars, custom triggers)

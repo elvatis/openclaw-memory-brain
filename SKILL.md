@@ -54,6 +54,49 @@ List the most recent brain memory items.
 
 Response: Numbered list with dates and text previews, or `No brain memories stored yet.` when empty.
 
+### `/tags-brain`
+
+List all unique tags across all brain memory items, sorted alphabetically.
+
+- **Auth required:** No
+- **Arguments:** None
+
+```
+/tags-brain
+```
+
+Response: `Tags (N): tag1, tag2, ...` or `No tags found.`
+
+### `/export-brain [--tags tag1,tag2]`
+
+Export brain memory items as JSON for backup or portability.
+
+- **Auth required:** No
+- **Arguments:** Optional `--tags` filter
+
+```
+/export-brain
+/export-brain --tags arch,design
+```
+
+Response: A JSON object with `{ version, exportedAt, count, items }`. The `items` array contains full memory items. Use `--tags` to export only items matching specific tags.
+
+### `/import-brain <json>`
+
+Import brain memory items from a JSON export. Accepts either a bare JSON array of items or an envelope object (as produced by `/export-brain`).
+
+- **Auth required:** Yes
+- **Arguments:** JSON string (required)
+
+```
+/import-brain [{"id":"...","kind":"note","text":"...","createdAt":"..."}]
+/import-brain {"version":1,"items":[...]}
+```
+
+Response: `Imported N items. X skipped (already exist). Y skipped (invalid format).`
+
+Items with matching IDs are skipped (idempotent). Missing IDs get a new UUID. Invalid `kind` defaults to `"note"`. Missing `tags` receive `defaultTags`.
+
 ### `/forget-brain <id>`
 
 Delete a brain memory item by its unique ID.

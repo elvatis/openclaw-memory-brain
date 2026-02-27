@@ -82,7 +82,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("register() - plugin setup", () => {
-  it("registers all five commands and one tool", () => {
+  it("registers all seven commands and one tool", () => {
     const api = createMockApi({ storePath: tempStorePath() });
     register(api);
 
@@ -91,6 +91,8 @@ describe("register() - plugin setup", () => {
     expect(api._commands.has("list-brain")).toBe(true);
     expect(api._commands.has("forget-brain")).toBe(true);
     expect(api._commands.has("tags-brain")).toBe(true);
+    expect(api._commands.has("export-brain")).toBe(true);
+    expect(api._commands.has("import-brain")).toBe(true);
     expect(api._tools.has("brain_memory_search")).toBe(true);
   });
 
@@ -124,7 +126,7 @@ describe("register() - plugin setup", () => {
     register(api);
 
     // Plugin should still register everything with defaults
-    expect(api._commands.size).toBe(5);
+    expect(api._commands.size).toBe(7);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -895,6 +897,25 @@ describe("command metadata", () => {
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(false);
   });
+
+  it("/export-brain has correct metadata", () => {
+    const cmd = api._commands.get("export-brain")!;
+    expect(cmd.name).toBe("export-brain");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/export-brain");
+    expect(cmd.usage).toContain("--tags");
+    expect(cmd.requireAuth).toBe(false);
+    expect(cmd.acceptsArgs).toBe(true);
+  });
+
+  it("/import-brain has correct metadata", () => {
+    const cmd = api._commands.get("import-brain")!;
+    expect(cmd.name).toBe("import-brain");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/import-brain");
+    expect(cmd.requireAuth).toBe(true);
+    expect(cmd.acceptsArgs).toBe(true);
+  });
 });
 
 describe("tag-based filtering - /remember-brain --tags", () => {
@@ -1143,5 +1164,346 @@ describe("/tags-brain command", () => {
     const result = await cmd.handler({});
     // brain (default) + shared + unique = 3 unique tags
     expect(result.text).toContain("Tags (3)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /export-brain command
+// ---------------------------------------------------------------------------
+
+describe("/export-brain command", () => {
+  it("returns empty message when store has no items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toBe("No brain memories to export.");
+  });
+
+  it("exports items as JSON with version envelope", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "First important memory to export" });
+    await rememberCmd.handler({ args: "Second important memory to export" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    const payload = JSON.parse(result.text);
+
+    expect(payload.version).toBe(1);
+    expect(typeof payload.exportedAt).toBe("string");
+    expect(payload.count).toBe(2);
+    expect(payload.items).toHaveLength(2);
+  });
+
+  it("exported items contain required MemoryItem fields", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "A memory with all fields present" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    const payload = JSON.parse(result.text);
+    const item = payload.items[0];
+
+    expect(typeof item.id).toBe("string");
+    expect(item.kind).toBe("note");
+    expect(typeof item.text).toBe("string");
+    expect(typeof item.createdAt).toBe("string");
+    expect(Array.isArray(item.tags)).toBe(true);
+  });
+
+  it("filters export by --tags flag", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Work related note for export testing --tags work" });
+    await rememberCmd.handler({ args: "Personal note should not appear in filtered export --tags personal" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--tags work" });
+    const payload = JSON.parse(result.text);
+
+    expect(payload.count).toBe(1);
+    expect(payload.items[0].text).toContain("Work related");
+  });
+
+  it("returns empty message when tag filter matches nothing", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Some memory item for export" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--tags nonexistent" });
+    expect(result.text).toBe("No brain memories to export.");
+  });
+
+  it("produces valid JSON that can be parsed back", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Memory with special chars: quotes \"hello\" and backslash \\" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+    expect(() => JSON.parse(result.text)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /import-brain command
+// ---------------------------------------------------------------------------
+
+describe("/import-brain command", () => {
+  it("returns usage text when no args are provided", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Usage");
+  });
+
+  it("returns error on invalid JSON", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: "not valid json {{{" });
+    expect(result.text).toBe("Invalid JSON input.");
+  });
+
+  it("returns error when JSON is not an array or object with items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: '"just a string"' });
+    expect(result.text).toContain("Expected a JSON array");
+  });
+
+  it("returns message when items array is empty", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: "[]" });
+    expect(result.text).toBe("No items to import.");
+  });
+
+  it("returns message for empty envelope format", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: '{"version":1,"items":[]}' });
+    expect(result.text).toBe("No items to import.");
+  });
+
+  it("imports items from a bare JSON array", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "imp-001", kind: "note", text: "Imported note one", createdAt: "2026-01-01T00:00:00Z", tags: ["imported"] },
+      { id: "imp-002", kind: "fact", text: "Imported fact two", createdAt: "2026-01-02T00:00:00Z", tags: ["imported"] },
+    ];
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 2 items.");
+
+    // Verify they appear in list
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Imported note one");
+    expect(listResult.text).toContain("Imported fact two");
+  });
+
+  it("imports items from an envelope object with version and items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const payload = {
+      version: 1,
+      exportedAt: "2026-01-15T00:00:00Z",
+      count: 1,
+      items: [
+        { id: "env-001", kind: "decision", text: "Use TypeScript for all projects", createdAt: "2026-01-15T00:00:00Z", tags: ["dev"] },
+      ],
+    };
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: JSON.stringify(payload) });
+    expect(result.text).toContain("Imported 1 item.");
+  });
+
+  it("skips items that already exist by ID", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "dup-001", kind: "note", text: "Original item for dedup test", createdAt: "2026-01-01T00:00:00Z" },
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    // First import
+    await cmd.handler({ args: JSON.stringify(items) });
+    // Second import - same ID should be skipped
+    const result = await cmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 0 items.");
+    expect(result.text).toContain("1 skipped (already exist)");
+  });
+
+  it("skips invalid entries and reports count", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "val-001", kind: "note", text: "Valid item for import", createdAt: "2026-01-01T00:00:00Z" },
+      { id: "val-002", kind: "note", text: "", createdAt: "2026-01-01T00:00:00Z" }, // empty text
+      null, // null entry
+      { id: "val-003", kind: "note", text: "Missing date" }, // no createdAt
+      42, // not an object
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 1 item.");
+    expect(result.text).toContain("4 skipped (invalid format)");
+  });
+
+  it("assigns default tags when imported items have no tags", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "tag-001", kind: "note", text: "Item without tags for import test", createdAt: "2026-01-01T00:00:00Z" },
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    await cmd.handler({ args: JSON.stringify(items) });
+
+    // Search for the item and verify default tags
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "without tags" } as ToolCallParams);
+    const hits = (result as { hits: Array<{ tags: string[] }> }).hits;
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]!.tags).toContain("brain");
+  });
+
+  it("preserves kind field from imported items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "kind-001", kind: "decision", text: "A decision item for kind test", createdAt: "2026-01-01T00:00:00Z", tags: ["test"] },
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    await cmd.handler({ args: JSON.stringify(items) });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.handler({ query: "decision item kind" } as ToolCallParams);
+    const hits = (result as { hits: Array<{ id: string }> }).hits;
+    expect(hits.some((h) => h.id === "kind-001")).toBe(true);
+  });
+
+  it("defaults kind to 'note' for invalid kind values", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { id: "kindinv-001", kind: "invalid_kind", text: "Item with invalid kind value", createdAt: "2026-01-01T00:00:00Z", tags: ["test"] },
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 1 item.");
+  });
+
+  it("generates a UUID for items without an id field", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const items = [
+      { kind: "note", text: "Item missing id field for import", createdAt: "2026-01-01T00:00:00Z", tags: ["noid"] },
+    ];
+
+    const cmd = api._commands.get("import-brain")!;
+    const result = await cmd.handler({ args: JSON.stringify(items) });
+    expect(result.text).toContain("Imported 1 item.");
+
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Item missing id");
+  });
+
+  it("requires auth (requireAuth is true)", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("import-brain")!;
+    expect(cmd.requireAuth).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export/import round-trip
+// ---------------------------------------------------------------------------
+
+describe("export/import round-trip", () => {
+  it("exports then imports items into a fresh store without data loss", async () => {
+    // Source store: create items
+    const sourceApi = createMockApi({ storePath: tempStorePath() });
+    register(sourceApi);
+
+    const rememberCmd = sourceApi._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Round-trip memory alpha --tags roundtrip,alpha" });
+    await rememberCmd.handler({ args: "Round-trip memory beta --tags roundtrip,beta" });
+
+    // Export from source
+    const exportCmd = sourceApi._commands.get("export-brain")!;
+    const exportResult = await exportCmd.handler({});
+    const exportedJson = exportResult.text;
+
+    // Target store: import the exported data
+    const targetApi = createMockApi({ storePath: tempStorePath() });
+    register(targetApi);
+
+    const importCmd = targetApi._commands.get("import-brain")!;
+    const importResult = await importCmd.handler({ args: exportedJson });
+    expect(importResult.text).toContain("Imported 2 items.");
+
+    // Verify items exist in target
+    const listCmd = targetApi._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Round-trip memory alpha");
+    expect(listResult.text).toContain("Round-trip memory beta");
+  });
+
+  it("re-importing the same export is idempotent (all skipped)", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Idempotent round-trip test memory" });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const exportResult = await exportCmd.handler({});
+    const exportedJson = exportResult.text;
+
+    // Import back into same store - should skip all
+    const importCmd = api._commands.get("import-brain")!;
+    const importResult = await importCmd.handler({ args: exportedJson });
+    expect(importResult.text).toContain("Imported 0 items.");
+    expect(importResult.text).toContain("1 skipped (already exist)");
   });
 });

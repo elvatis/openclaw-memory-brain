@@ -222,6 +222,98 @@ export default function register(api: PluginApi) {
     },
   });
 
+  // Command: /export-brain [--tags tag1,tag2]
+  api.registerCommand({
+    name: "export-brain",
+    description: "Export brain memory items as JSON for backup or portability. Use --tags tag1,tag2 to filter.",
+    usage: "/export-brain [--tags tag1,tag2]",
+    requireAuth: false,
+    acceptsArgs: true,
+    handler: async (ctx: CommandContext) => {
+      const raw = String(ctx?.args ?? "").trim();
+      const { tags } = parseTags(raw);
+      const items = await store.list({ limit: 5000, ...(tags.length > 0 ? { tags } : {}) });
+      if (items.length === 0) return { text: "No brain memories to export." };
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        count: items.length,
+        items,
+      };
+      return { text: JSON.stringify(payload, null, 2) };
+    },
+  });
+
+  // Command: /import-brain <json>
+  api.registerCommand({
+    name: "import-brain",
+    description: "Import brain memory items from a JSON export. Skips items that already exist.",
+    usage: "/import-brain <json>",
+    requireAuth: true,
+    acceptsArgs: true,
+    handler: async (ctx: CommandContext) => {
+      const raw = String(ctx?.args ?? "").trim();
+      if (!raw) return { text: "Usage: /import-brain <json>" };
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return { text: "Invalid JSON input." };
+      }
+
+      let items: unknown[];
+      if (Array.isArray(payload)) {
+        items = payload;
+      } else if (payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).items)) {
+        items = (payload as Record<string, unknown>).items as unknown[];
+      } else {
+        return { text: "Expected a JSON array or an object with an \"items\" array." };
+      }
+
+      if (items.length === 0) return { text: "No items to import." };
+
+      let imported = 0;
+      let skipped = 0;
+      let invalid = 0;
+
+      for (const entry of items) {
+        if (!entry || typeof entry !== "object") { invalid++; continue; }
+        const obj = entry as Record<string, unknown>;
+        if (typeof obj.text !== "string" || !obj.text) { invalid++; continue; }
+        if (typeof obj.createdAt !== "string") { invalid++; continue; }
+
+        const id = typeof obj.id === "string" && obj.id ? obj.id : uuid();
+        const existing = await store.get(id);
+        if (existing) { skipped++; continue; }
+
+        const kind = (["fact", "decision", "doc", "note"].includes(obj.kind as string)
+          ? obj.kind : "note") as MemoryItem["kind"];
+        const item: MemoryItem = {
+          id,
+          kind,
+          text: obj.text as string,
+          createdAt: obj.createdAt as string,
+          tags: Array.isArray(obj.tags)
+            ? (obj.tags as unknown[]).filter((t): t is string => typeof t === "string")
+            : defaultTags,
+          source: obj.source && typeof obj.source === "object"
+            ? obj.source as MemoryItem["source"] : undefined,
+          meta: obj.meta && typeof obj.meta === "object"
+            ? obj.meta as Record<string, unknown> : undefined,
+        };
+
+        await store.add(item);
+        imported++;
+      }
+
+      const parts: string[] = [`Imported ${imported} item${imported !== 1 ? "s" : ""}.`];
+      if (skipped > 0) parts.push(`${skipped} skipped (already exist).`);
+      if (invalid > 0) parts.push(`${invalid} skipped (invalid format).`);
+      return { text: parts.join(" ") };
+    },
+  });
+
   // Auto-capture from inbound messages.
   api.on("message_received", async (event: MessageEvent, ctx: MessageEventContext) => {
     try {
