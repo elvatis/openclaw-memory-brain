@@ -181,7 +181,7 @@ export default function register(api: PluginApi) {
   api.registerTool({
     name: "brain_memory_search",
     description: "Search personal brain memory items (local JSONL store). Optionally filter by tags (AND logic).",
-    inputSchema: {
+    parameters: {
       type: "object",
       additionalProperties: false,
       properties: {
@@ -191,7 +191,7 @@ export default function register(api: PluginApi) {
       },
       required: ["query"]
     },
-    handler: async (params: ToolCallParams) => {
+    async execute(params: ToolCallParams) {
       const q = String(params['query'] ?? "").trim();
       const limit = safeLimit(params['limit'], 5, 20);
       const tags = Array.isArray(params['tags']) ? (params['tags'] as string[]).filter(Boolean) : [];

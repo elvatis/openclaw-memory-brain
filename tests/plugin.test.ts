@@ -324,7 +324,7 @@ describe("/forget-brain command", () => {
 
     // Use the tool to search and get the id
     const tool = api._tools.get("brain_memory_search")!;
-    const searchResult = await tool.handler({ query: "Temporary note deleted" } as ToolCallParams);
+    const searchResult = await tool.execute({ query: "Temporary note deleted" } as ToolCallParams);
     const hits = (searchResult as { hits: Array<{ id: string }> }).hits;
     expect(hits.length).toBeGreaterThan(0);
     const itemId = hits[0]!.id;
@@ -360,7 +360,7 @@ describe("brain_memory_search tool", () => {
 
   it("returns hits with score, id, createdAt, tags, and text", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "architecture microservices" } as ToolCallParams);
+    const result = await tool.execute({ query: "architecture microservices" } as ToolCallParams);
     const data = result as { hits: Array<{ score: number; id: string; createdAt: string; tags: string[]; text: string }> };
 
     expect(data.hits.length).toBeGreaterThan(0);
@@ -377,21 +377,21 @@ describe("brain_memory_search tool", () => {
 
   it("returns empty hits for empty query", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "" } as ToolCallParams);
+    const result = await tool.execute({ query: "" } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits).toEqual([]);
   });
 
   it("returns empty hits for undefined query", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({} as ToolCallParams);
+    const result = await tool.execute({} as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits).toEqual([]);
   });
 
   it("respects the limit parameter", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "planning", limit: 1 } as ToolCallParams);
+    const result = await tool.execute({ query: "planning", limit: 1 } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBeLessThanOrEqual(1);
   });
@@ -400,14 +400,14 @@ describe("brain_memory_search tool", () => {
     const tool = api._tools.get("brain_memory_search")!;
     // With only 2 items, we can't fully test the default limit of 5,
     // but we verify it doesn't crash
-    const result = await tool.handler({ query: "decision" } as ToolCallParams);
+    const result = await tool.execute({ query: "decision" } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBeLessThanOrEqual(5);
   });
 
   it("has correct inputSchema definition including tags", () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const schema = tool.inputSchema as Record<string, unknown>;
+    const schema = tool.parameters as Record<string, unknown>;
     expect(schema.type).toBe("object");
     const props = schema.properties as Record<string, unknown>;
     expect(props).toHaveProperty("query");
@@ -559,7 +559,7 @@ describe("auto-capture (message_received hook)", () => {
 
     // Search for the stored item to verify redaction
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "key useful" } as ToolCallParams);
+    const result = await tool.execute({ query: "key useful" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.text).toContain("[REDACTED:GOOGLE_KEY]");
@@ -631,7 +631,7 @@ describe("custom configuration", () => {
     await rememberCmd.handler({ args: "Custom tagged note for the project" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Custom tagged note" } as ToolCallParams);
+    const result = await tool.execute({ query: "Custom tagged note" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.tags).toEqual(["project-x", "notes"]);
@@ -699,7 +699,7 @@ describe("custom configuration", () => {
     );
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "key" } as ToolCallParams);
+    const result = await tool.execute({ query: "key" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     // Secret should NOT be redacted
@@ -781,7 +781,7 @@ describe("edge cases", () => {
 
     const tool = api._tools.get("brain_memory_search")!;
     // Passing limit of 100 - should be clamped to 20
-    const result = await tool.handler({ query: "Test note", limit: 100 } as ToolCallParams);
+    const result = await tool.execute({ query: "Test note", limit: 100 } as ToolCallParams);
     const data = result as { hits: unknown[] };
     // Should still work (clamped to 20, but we only have 1 item)
     expect(data.hits.length).toBeLessThanOrEqual(20);
@@ -933,7 +933,7 @@ describe("tag-based filtering - /remember-brain --tags", () => {
     await cmd.handler({ args: "Architecture decision about caching --tags arch,caching" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Architecture caching" } as ToolCallParams);
+    const result = await tool.execute({ query: "Architecture caching" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[]; text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.tags).toContain("brain");
@@ -946,7 +946,7 @@ describe("tag-based filtering - /remember-brain --tags", () => {
     await cmd.handler({ args: "Note about brain patterns --tags brain,extra" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "brain patterns" } as ToolCallParams);
+    const result = await tool.execute({ query: "brain patterns" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     const tags = data.hits[0]!.tags;
@@ -959,7 +959,7 @@ describe("tag-based filtering - /remember-brain --tags", () => {
     await cmd.handler({ args: "Simple note without extra tags" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Simple note" } as ToolCallParams);
+    const result = await tool.execute({ query: "Simple note" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.tags).toEqual(["brain"]);
@@ -970,7 +970,7 @@ describe("tag-based filtering - /remember-brain --tags", () => {
     await cmd.handler({ args: "Important API decision --tags api,decisions" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Important API" } as ToolCallParams);
+    const result = await tool.execute({ query: "Important API" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.text).not.toContain("--tags");
@@ -1081,7 +1081,7 @@ describe("tag-based filtering - brain_memory_search tool with tags", () => {
 
   it("filters tool results by tags", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "architecture", tags: ["arch", "microservices"] } as ToolCallParams);
+    const result = await tool.execute({ query: "architecture", tags: ["arch", "microservices"] } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[]; text: string }> };
     expect(data.hits.length).toBe(1);
     expect(data.hits[0]!.text).toContain("Microservices");
@@ -1089,21 +1089,21 @@ describe("tag-based filtering - brain_memory_search tool with tags", () => {
 
   it("returns all matching items when tags is an empty array", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "architecture", tags: [] } as ToolCallParams);
+    const result = await tool.execute({ query: "architecture", tags: [] } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThanOrEqual(2);
   });
 
   it("returns all matching items when tags is not provided", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "architecture" } as ToolCallParams);
+    const result = await tool.execute({ query: "architecture" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThanOrEqual(2);
   });
 
   it("returns no hits when tags do not match any item", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "architecture", tags: ["nonexistent"] } as ToolCallParams);
+    const result = await tool.execute({ query: "architecture", tags: ["nonexistent"] } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBe(0);
   });
@@ -1395,7 +1395,7 @@ describe("/import-brain command", () => {
 
     // Search for the item and verify default tags
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "without tags" } as ToolCallParams);
+    const result = await tool.execute({ query: "without tags" } as ToolCallParams);
     const hits = (result as { hits: Array<{ tags: string[] }> }).hits;
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]!.tags).toContain("brain");
@@ -1413,7 +1413,7 @@ describe("/import-brain command", () => {
     await cmd.handler({ args: JSON.stringify(items) });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "decision item kind" } as ToolCallParams);
+    const result = await tool.execute({ query: "decision item kind" } as ToolCallParams);
     const hits = (result as { hits: Array<{ id: string }> }).hits;
     expect(hits.some((h) => h.id === "kind-001")).toBe(true);
   });
@@ -1958,7 +1958,7 @@ describe("parseTags edge cases", () => {
     await cmd.handler({ args: "Note with sparse tags --tags alpha,,beta" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "sparse tags" } as ToolCallParams);
+    const result = await tool.execute({ query: "sparse tags" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     // Empty strings should be filtered out
@@ -1972,7 +1972,7 @@ describe("parseTags edge cases", () => {
     await cmd.handler({ args: "--tags first,second Some important text" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "important text" } as ToolCallParams);
+    const result = await tool.execute({ query: "important text" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[]; text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.tags).toContain("first");
@@ -1986,7 +1986,7 @@ describe("parseTags edge cases", () => {
     await cmd.handler({ args: "Single tag note --tags solo" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Single tag" } as ToolCallParams);
+    const result = await tool.execute({ query: "Single tag" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.tags).toContain("solo");
@@ -2012,14 +2012,14 @@ describe("brain_memory_search tool - edge cases", () => {
   it("handles tags as a non-array value gracefully (passes empty tags)", async () => {
     const tool = api._tools.get("brain_memory_search")!;
     // Pass tags as a string instead of array - should be treated as no filter
-    const result = await tool.handler({ query: "edge case", tags: "not-an-array" } as ToolCallParams);
+    const result = await tool.execute({ query: "edge case", tags: "not-an-array" } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBeGreaterThan(0);
   });
 
   it("handles limit of 0 by clamping to minimum", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "edge case", limit: 0 } as ToolCallParams);
+    const result = await tool.execute({ query: "edge case", limit: 0 } as ToolCallParams);
     const data = result as { hits: unknown[] };
     // safeLimit clamps 0 to the default (5) or minimum
     expect(data.hits.length).toBeGreaterThanOrEqual(0);
@@ -2027,14 +2027,14 @@ describe("brain_memory_search tool - edge cases", () => {
 
   it("handles negative limit by clamping to default", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "edge case", limit: -5 } as ToolCallParams);
+    const result = await tool.execute({ query: "edge case", limit: -5 } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBeGreaterThanOrEqual(0);
   });
 
   it("handles limit as undefined by using default of 5", async () => {
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "edge case", limit: undefined } as ToolCallParams);
+    const result = await tool.execute({ query: "edge case", limit: undefined } as ToolCallParams);
     const data = result as { hits: unknown[] };
     expect(data.hits.length).toBeGreaterThanOrEqual(0);
     expect(data.hits.length).toBeLessThanOrEqual(5);
@@ -2187,7 +2187,7 @@ describe("/import-brain - field preservation", () => {
     await importCmd.handler({ args: JSON.stringify(items) });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "mixed type tags" } as ToolCallParams);
+    const result = await tool.execute({ query: "mixed type tags" } as ToolCallParams);
     const data = result as { hits: Array<{ tags: string[] }> };
     expect(data.hits.length).toBeGreaterThan(0);
     // Only string tags should remain
@@ -2367,7 +2367,7 @@ describe("configuration combinations", () => {
     await rememberCmd.handler({ args: "Manual note in combined test" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const searchResult = await tool.handler({ query: "Manual note" } as ToolCallParams);
+    const searchResult = await tool.execute({ query: "Manual note" } as ToolCallParams);
     const data = searchResult as { hits: Array<{ tags: string[] }> };
     expect(data.hits[0]!.tags).toContain("custom-brain");
 
@@ -2404,7 +2404,7 @@ describe("/remember-brain - additional edge cases", () => {
     await cmd.handler({ args: specialText });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "JSON XML" } as ToolCallParams);
+    const result = await tool.execute({ query: "JSON XML" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.text).toContain("JSON:");
@@ -2419,7 +2419,7 @@ describe("/remember-brain - additional edge cases", () => {
     await cmd.handler({ args: longText });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Important word" } as ToolCallParams);
+    const result = await tool.execute({ query: "Important word" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.text.length).toBeGreaterThan(500);
@@ -2503,7 +2503,7 @@ describe("custom dims and maxItems configuration", () => {
     expect(result.text).toContain("Saved brain memory");
 
     const tool = api._tools.get("brain_memory_search")!;
-    const searchResult = await tool.handler({ query: "custom dims" } as ToolCallParams);
+    const searchResult = await tool.execute({ query: "custom dims" } as ToolCallParams);
     const data = searchResult as { hits: unknown[] };
     expect(data.hits.length).toBeGreaterThan(0);
   });
@@ -2534,7 +2534,7 @@ describe("search result score ordering", () => {
     await rememberCmd.handler({ args: "Frontend React component library for shared UI elements" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "PostgreSQL database", limit: 20 } as ToolCallParams);
+    const result = await tool.execute({ query: "PostgreSQL database", limit: 20 } as ToolCallParams);
     const data = result as { hits: Array<{ score: number }> };
 
     for (let i = 1; i < data.hits.length; i++) {
@@ -2551,7 +2551,7 @@ describe("search result score ordering", () => {
     await rememberCmd.handler({ args: "Python virtual environment setup guide and best practices" });
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "TypeScript configuration" } as ToolCallParams);
+    const result = await tool.execute({ query: "TypeScript configuration" } as ToolCallParams);
     const data = result as { hits: Array<{ score: number }> };
 
     for (const hit of data.hits) {
@@ -3227,7 +3227,7 @@ describe("explicit capture UX - trigger prefix stripping", () => {
     );
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "actual content matters" } as ToolCallParams);
+    const result = await tool.execute({ query: "actual content matters" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     // Should not contain the trigger prefix
@@ -3250,7 +3250,7 @@ describe("explicit capture UX - trigger prefix stripping", () => {
     );
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "Architektur Entscheidung" } as ToolCallParams);
+    const result = await tool.execute({ query: "Architektur Entscheidung" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     expect(data.hits[0]!.text).not.toMatch(/^merke dir/i);
@@ -3274,7 +3274,7 @@ describe("explicit capture UX - trigger prefix stripping", () => {
     );
 
     const tool = api._tools.get("brain_memory_search")!;
-    const result = await tool.handler({ query: "decision cloud provider" } as ToolCallParams);
+    const result = await tool.execute({ query: "decision cloud provider" } as ToolCallParams);
     const data = result as { hits: Array<{ text: string }> };
     expect(data.hits.length).toBeGreaterThan(0);
     // Topic captures should preserve the full text
