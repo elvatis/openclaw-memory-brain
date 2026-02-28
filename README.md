@@ -299,6 +299,11 @@ The test suite covers all plugin functionality:
 - **Runtime**: `@elvatis_com/openclaw-memory-core` (local linked package)
 - **Dev**: `typescript`, `vitest`, `@types/node`
 
+## Shared Template
+
+For automation that creates GitHub issues, use `src/templates/github-issue-helper.ts`.
+It provides `isValidIssueRepoSlug()`, `resolveIssueRepo()`, and `buildGhIssueCreateCommand()`.
+
 ## License
 
 MIT
