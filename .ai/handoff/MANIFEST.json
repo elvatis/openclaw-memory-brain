@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "t009-dedupe-ttl-2026-03-01",
-    "timestamp": "2026-03-01T13:40:38.551Z",
-    "commit": "731176d",
+    "session_id": "t001-roadmap-close-2026-03-01",
+    "timestamp": "2026-03-01T15:58:00.000Z",
+    "commit": "pending",
     "phase": "implementation",
-    "duration_minutes": 2
+    "duration_minutes": 5
   },
   "files": {
     "STATUS.md": {
@@ -15,8 +15,8 @@
       "summary": "v0.1.2 active, v0.2 roadmap defined with 5 GitHub issues"
     },
     "NEXT_ACTIONS.md": {
-      "updated": "2026-03-01T14:38:00Z",
-      "summary": "9 done, 1 ready (T-010 per-channel), 0 blocked"
+      "updated": "2026-03-01T15:58:00Z",
+      "summary": "10 done, 0 ready, 0 blocked - all v0.2 tasks complete"
     },
     "LOG.md": {
       "updated": "2026-02-27T00:00:00Z",
@@ -39,18 +39,18 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "All v0.2 tasks complete including T-009 dedupe+TTL. 196 tests passing. Fixed race conditions in retention tests (startup async ops). Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import. T-010 per-channel policy also already implemented.",
+  "quick_context": "All v0.2 tasks complete (T-001 through T-010). 196 tests passing. All 9 GitHub issues (#1-#9) closed. Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import, tag filtering, purge. v0.2 roadmap fully delivered.",
   "next_task_id": 11,
   "tasks": {
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
-      "status": "completed",
+      "status": "done",
       "priority": "medium",
       "depends_on": [],
       "created": "2026-02-24T00:00:00Z",
-      "completed": "2026-02-27T00:00:00Z",
       "github_repo": "elvatis/openclaw-memory-brain",
-      "github_issue": 9
+      "github_issue": 9,
+      "completed": "2026-03-01T15:58:00.000Z"
     },
     "T-002": {
       "title": "Implement unit test suite (#4)",
