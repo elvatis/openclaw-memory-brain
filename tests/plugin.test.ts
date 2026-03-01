@@ -1540,6 +1540,9 @@ describe("/purge-brain command", () => {
     });
     register(api);
 
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     // Import items with old and recent dates
     const importCmd = api._commands.get("import-brain")!;
     const now = new Date();
@@ -1578,6 +1581,9 @@ describe("/purge-brain command", () => {
     });
     register(api);
 
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     const rememberCmd = api._commands.get("remember-brain")!;
     await rememberCmd.handler({ args: "A fresh note added today" });
 
@@ -1593,6 +1599,9 @@ describe("/purge-brain command", () => {
       retention: { maxAgeDays: 10 },
     });
     register(api);
+
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const importCmd = api._commands.get("import-brain")!;
     const oldDate = new Date(Date.now() - 20 * 86_400_000).toISOString();
@@ -1811,6 +1820,9 @@ describe("retention policy - edge cases", () => {
     });
     register(api);
 
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     const importCmd = api._commands.get("import-brain")!;
     const oldDate = new Date(Date.now() - 5 * 86_400_000).toISOString();
     await importCmd.handler({
@@ -1838,6 +1850,9 @@ describe("retention policy - edge cases", () => {
     });
     register(api);
 
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     const importCmd = api._commands.get("import-brain")!;
     const oldDate = new Date(Date.now() - 20 * 86_400_000).toISOString();
     const recentDate = new Date().toISOString();
@@ -1863,6 +1878,9 @@ describe("retention policy - edge cases", () => {
       retention: { maxAgeDays: 30 },
     });
     register(api);
+
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const importCmd = api._commands.get("import-brain")!;
     // Item created exactly 30 days ago (right at the boundary)
@@ -2350,6 +2368,9 @@ describe("configuration combinations", () => {
     });
     register(api);
 
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     // Auto-capture should use custom trigger and custom tags
     const handlers = api._handlers.get("message_received") ?? [];
     const handler = handlers[0]!;
@@ -2709,6 +2730,9 @@ describe("/purge-brain with arbitrary args", () => {
       retention: { maxAgeDays: 10 },
     });
     register(api);
+
+    // Wait for async startup retention/TTL purge to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const rememberCmd = api._commands.get("remember-brain")!;
     await rememberCmd.handler({ args: "Fresh item for whitespace arg purge test" });
