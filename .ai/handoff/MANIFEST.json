@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "expand-unit-suite-2026-02-27",
-    "timestamp": "2026-02-27T07:50:25.57Z",
-    "commit": "b3a2311",
+    "session_id": "t008-explicit-capture-ux-2026-03-01",
+    "timestamp": "2026-03-01T14:01:00Z",
+    "commit": "pending",
     "phase": "implementation",
-    "duration_minutes": 2
+    "duration_minutes": 5
   },
   "files": {
     "STATUS.md": {
@@ -15,8 +15,8 @@
       "summary": "v0.1.2 active, v0.2 roadmap defined with 5 GitHub issues"
     },
     "NEXT_ACTIONS.md": {
-      "updated": "2026-02-27T00:00:00Z",
-      "summary": "6 tasks. Top: T-002 (unit tests). Blocked: T-004, T-005, T-006"
+      "updated": "2026-03-01T14:01:00Z",
+      "summary": "8 done, 2 ready (T-009 dedupe+TTL, T-010 per-channel), 0 blocked"
     },
     "LOG.md": {
       "updated": "2026-02-27T00:00:00Z",
@@ -39,8 +39,8 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "All v0.2 tasks complete. 168 tests passing. Expanded unit suite covering retention edge cases, parseTags, capture metadata, import field preservation, config combinations, tool parameter edge cases, search score ordering, limit boundaries, source context, export envelope validation, and purge arg handling.",
-  "next_task_id": 8,
+  "quick_context": "All v0.2 tasks complete including T-008 explicit capture UX. 196 tests passing. Features: trigger prefix stripping (Merke dir:, remember this:, etc.), /remember-brain --tags support, confirmation with memory id, dedupe, TTL, per-channel policy, retention, export/import.",
+  "next_task_id": 11,
   "tasks": {
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
@@ -111,6 +111,37 @@
       "created": "2026-02-27T08:40:56Z",
       "github_issue": "https://github.com/elvatis/openclaw-memory-brain/issues/7",
       "completed": "2026-02-27T07:50:25.57Z"
+    },
+    "T-008": {
+      "title": "v0.2: explicit capture UX",
+      "status": "done",
+      "priority": "low",
+      "depends_on": [],
+      "created": "2026-03-01T12:58:53.111Z",
+      "completed": "2026-03-01T14:01:00Z",
+      "notes": "Improve explicit capture UX:\n- accept 'Merke dir:' prefix but store only payload\n- /remember-brain supports --tags\n- confirmation includes id\nAll three features were already implemented and tested (196 tests passing).",
+      "github_issue": 3,
+      "github_repo": "elvatis/openclaw-memory-brain"
+    },
+    "T-009": {
+      "title": "v0.2: dedupe + TTL",
+      "status": "ready",
+      "priority": "low",
+      "depends_on": [],
+      "created": "2026-03-01T12:58:53.112Z",
+      "notes": "Add deduplication and optional TTL/retention:\n- skip near-duplicates\n- maxItems or daysToKeep\n\nAcceptance:\n- config\n- tests",
+      "github_issue": 2,
+      "github_repo": "elvatis/openclaw-memory-brain"
+    },
+    "T-010": {
+      "title": "v0.2: per-channel capture policy",
+      "status": "ready",
+      "priority": "low",
+      "depends_on": [],
+      "created": "2026-03-01T12:58:53.112Z",
+      "notes": "Add allowlist/denylist for capture by channel/provider and for group chats.\nDefault: capture only in DM.\n\nAcceptance:\n- config schema\n- tests",
+      "github_issue": 1,
+      "github_repo": "elvatis/openclaw-memory-brain"
     }
   }
 }

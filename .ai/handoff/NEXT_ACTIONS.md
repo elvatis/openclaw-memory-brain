@@ -6,66 +6,85 @@
 
 ---
 
-## T-003: Update README and SKILL.md (GitHub #8)
+## Status Summary
 
-**Goal:** Document all v0.1.2 commands and configuration options.
+| State | Count |
+|-------|-------|
+| Done | 8 |
+| Ready | 2 |
+| Blocked | 0 |
+
+---
+
+## Ready - Work These Next
+
+### T-009: v0.2: dedupe + TTL (GitHub #2)
+
+**Goal:** Add deduplication and optional TTL/retention.
 
 **Context:**
-- README only documents /remember-brain and brain_memory_search
-- /search-brain, /list-brain, /forget-brain are undocumented
-- maxItems config is undocumented
+- Deduplication (`dedupeThreshold`) and TTL (`defaultTtlMs`) are already implemented in `index.ts`
+- `isDuplicate()` function checks for near-duplicates before capture
+- TTL is applied via `ttlMs()` and `store.purgeExpired()` on startup
+- Need to verify if all acceptance criteria are met: config + tests
 
 **What to do:**
-1. Add Commands section to README.md with all 5 commands and usage
-2. Update Config section with maxItems
-3. Update SKILL.md with complete feature list
-4. No em dashes
+1. Review existing dedupe and TTL implementation in `index.ts` (lines 82-83, 136-141, 245-247, 516-519)
+2. Verify tests cover `dedupeThreshold` and `defaultTtlMs` configuration
+3. If tests are missing, add them; if implementation is complete, mark as done
+4. Close GitHub issue #2
+
+**Files:** `index.ts`, `tests/plugin.test.ts`
 
 **Definition of done:**
-- [ ] All commands documented in README.md
-- [ ] SKILL.md updated
-- [ ] Config section reflects current schema
+- Config schema supports `dedupeThreshold` and `defaultTtlMs`
+- Near-duplicate messages are skipped during auto-capture
+- TTL-expired items are purged on startup
+- Tests cover dedupe and TTL behavior
 
 ---
 
-## T-004: Add tag-based filtering (GitHub #5)
+### T-010: v0.2: per-channel capture policy (GitHub #1)
 
-**Goal:** Allow filtering search and list results by tag.
+**Goal:** Add allowlist/denylist for capture by channel/provider.
 
 **Context:**
-- Tests are now in place (T-002 complete, 58 tests)
-- Add `tags` filter parameter to /search-brain and /list-brain
-- Add tests for the new filtering logic
+- Per-channel capture policy is already implemented in `index.ts`
+- `isChannelAllowed()` function (lines 109-117) handles allow/deny lists
+- Config supports `capture.channels.allow`, `capture.channels.deny`, `capture.channels.defaultPolicy`
+- Need to verify if all acceptance criteria are met: config schema + tests
+
+**What to do:**
+1. Review existing channel policy implementation in `index.ts` (lines 76-79, 109-117, 497-503)
+2. Verify tests cover channel allow/deny/default policy configurations
+3. If tests are missing, add them; if implementation is complete, mark as done
+4. Close GitHub issue #1
+
+**Files:** `index.ts`, `tests/plugin.test.ts`
+
+**Definition of done:**
+- Config schema supports `capture.channels.allow`, `capture.channels.deny`, `capture.channels.defaultPolicy`
+- Messages from denied channels are skipped
+- Messages from non-allowed channels are skipped when allow list is set
+- Tests cover channel policy behavior
 
 ---
 
-## T-005: Add export/import commands (GitHub #6)
+## Blocked
 
-**Goal:** Add /export-brain and /import-brain for backup and portability.
-
-**Context:**
-- Tests are now in place (T-002 complete, 58 tests)
-- Add tests for the new commands
-
----
-
-## T-006: Add retention policy (GitHub #7)
-
-**Goal:** Add time-based cleanup with configurable maxAgeDays.
-
-**Context:**
-- Tests are now in place (T-002 complete, 58 tests)
-- Add tests for the retention logic
+(No blocked tasks)
 
 ---
 
 ## Recently Completed
 
-| Item | Resolution |
-|------|-----------|
-| T-002: Implement unit test suite (#4) | 58 tests covering all commands, tool, auto-capture, config, edge cases (2026-02-27) |
-| T-001: Define v0.2 roadmap | 5 GitHub issues created (#4-#8), DASHBOARD updated (2026-02-27) |
-| Initial scaffold | Created 2026-02-24 |
+| Task | Date |
+|------|------|
+| T-008: v0.2: explicit capture UX (#3) - trigger prefix stripping, --tags, id in confirmation | 2026-03-01 |
+| T-007: Add time-based retention policy with automatic cleanup (#7) | 2026-02-27 |
+| T-006: Add retention policy (#7) | 2026-02-27 |
+| T-005: Add export/import commands (#6) | 2026-02-27 |
+| T-004: Add tag-based filtering (#5) | 2026-02-27 |
 
 ---
 
@@ -77,3 +96,4 @@
 | Core dependency | `../openclaw-memory-core/src/` |
 | Plugin manifest | `openclaw.plugin.json` |
 | Package config | `package.json` |
+| Test suite | `tests/plugin.test.ts` (196 tests) |
