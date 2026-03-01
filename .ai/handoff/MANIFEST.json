@@ -4,10 +4,10 @@
   "last_session": {
     "agent": "claude-code",
     "session_id": "t009-dedupe-ttl-2026-03-01",
-    "timestamp": "2026-03-01T14:38:00Z",
+    "timestamp": "2026-03-01T13:40:38.551Z",
     "commit": "731176d",
     "phase": "implementation",
-    "duration_minutes": 5
+    "duration_minutes": 2
   },
   "files": {
     "STATUS.md": {
@@ -109,7 +109,7 @@
       "priority": "medium",
       "depends_on": [],
       "created": "2026-02-27T08:40:56Z",
-      "github_issue": "https://github.com/elvatis/openclaw-memory-brain/issues/7",
+      "github_issue": 7,
       "completed": "2026-02-27T07:50:25.57Z"
     },
     "T-008": {
@@ -129,20 +129,21 @@
       "priority": "low",
       "depends_on": [],
       "created": "2026-03-01T12:58:53.112Z",
-      "notes": "Dedupe + TTL was already implemented. Fixed race conditions in retention tests where async startup operations (runRetention, purgeExpired) could conflict with subsequent store operations. Added startup wait to 8 tests.",
+      "notes": "Add deduplication and optional TTL/retention:\n- skip near-duplicates\n- maxItems or daysToKeep\n\nAcceptance:\n- config\n- tests",
       "github_issue": 2,
       "github_repo": "elvatis/openclaw-memory-brain",
-      "completed": "2026-03-01T14:38:00Z"
+      "completed": "2026-03-01T13:40:38.551Z"
     },
     "T-010": {
       "title": "v0.2: per-channel capture policy",
-      "status": "ready",
+      "status": "done",
       "priority": "low",
       "depends_on": [],
       "created": "2026-03-01T12:58:53.112Z",
       "notes": "Add allowlist/denylist for capture by channel/provider and for group chats.\nDefault: capture only in DM.\n\nAcceptance:\n- config schema\n- tests",
       "github_issue": 1,
-      "github_repo": "elvatis/openclaw-memory-brain"
+      "github_repo": "elvatis/openclaw-memory-brain",
+      "completed": "2026-03-01T14:20:00.000Z"
     }
   }
 }
