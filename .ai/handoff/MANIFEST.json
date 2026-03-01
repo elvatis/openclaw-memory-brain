@@ -4,7 +4,7 @@
   "last_session": {
     "agent": "claude-code",
     "session_id": "expand-unit-suite-2026-02-27",
-    "timestamp": "2026-02-27T07:50:25.570Z",
+    "timestamp": "2026-02-27T07:50:25.57Z",
     "commit": "b3a2311",
     "phase": "implementation",
     "duration_minutes": 2
@@ -48,7 +48,9 @@
       "priority": "medium",
       "depends_on": [],
       "created": "2026-02-24T00:00:00Z",
-      "completed": "2026-02-27T00:00:00Z"
+      "completed": "2026-02-27T00:00:00Z",
+      "github_repo": "elvatis/openclaw-memory-brain",
+      "github_issue": 9
     },
     "T-002": {
       "title": "Implement unit test suite (#4)",
@@ -108,7 +110,7 @@
       "depends_on": [],
       "created": "2026-02-27T08:40:56Z",
       "github_issue": "https://github.com/elvatis/openclaw-memory-brain/issues/7",
-      "completed": "2026-02-27T07:50:25.570Z"
+      "completed": "2026-02-27T07:50:25.57Z"
     }
   }
 }
