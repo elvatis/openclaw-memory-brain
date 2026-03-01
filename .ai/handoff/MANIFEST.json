@@ -5,7 +5,7 @@
     "agent": "claude-code",
     "session_id": "t008-explicit-capture-ux-2026-03-01",
     "timestamp": "2026-03-01T14:01:00Z",
-    "commit": "pending",
+    "commit": "974d41e",
     "phase": "implementation",
     "duration_minutes": 5
   },
