@@ -4,10 +4,10 @@
   "last_session": {
     "agent": "claude-code",
     "session_id": "t013-markdown-export-2026-03-02",
-    "timestamp": "2026-03-02T04:15:00.000Z",
+    "timestamp": "2026-03-02T03:17:53.625Z",
     "commit": "adb1762",
     "phase": "implementation",
-    "duration_minutes": 10
+    "duration_minutes": 2
   },
   "files": {
     "STATUS.md": {
@@ -176,7 +176,7 @@
       "notes": "## Summary\n\nThe /export-brain command exports items as a JSON envelope, which is machine-readable but not human-friendly. Users who want to review their brain memory in a text editor, Obsidian, or Notion have no easy way to do so.\n\n## Scope\n\n- Add --format md flag to /export-brain\n- When --format md is specified, output a Markdown document:\n  - Title: # Brain Memory Export - <date>\n  - Grouped by tags (alphabetical), with ## <tag> headings\n  - Items under each heading: - [<date>] <text>\n  - Items with multiple tags appear under each relevant tag heading\n  - Items with no tags appear under ## (untagged)\n- Default format remains JSON (no breaking change)\n- --tags filter is compatible with --format md\n\n## Acceptance criteria\n\n- /export-brain --format md returns valid Markdown\n- Tags are sorted alphabetically in output\n- /export-brain --tags arch --format md filters before grouping\n- Tests cover Markdown output format and tag grouping logic\n- README /export-brain section updated with --format md example",
       "github_issue": 12,
       "github_repo": "elvatis/openclaw-memory-brain",
-      "completed": "2026-03-02T04:15:00.000Z"
+      "completed": "2026-03-02T03:17:53.625Z"
     },
     "T-014": {
       "title": "Add /dedupe-brain command for near-duplicate memory cleanup",
