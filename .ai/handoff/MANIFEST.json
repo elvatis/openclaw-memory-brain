@@ -4,10 +4,10 @@
   "last_session": {
     "agent": "claude-code",
     "session_id": "t001-roadmap-close-2026-03-01",
-    "timestamp": "2026-03-01T15:58:00.000Z",
+    "timestamp": "2026-03-01T14:59:38.257Z",
     "commit": "10fafd5",
     "phase": "implementation",
-    "duration_minutes": 5
+    "duration_minutes": 2
   },
   "files": {
     "STATUS.md": {
@@ -39,8 +39,8 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "All v0.2 tasks complete (T-001 through T-010). 196 tests passing. All 9 GitHub issues (#1-#9) closed. Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import, tag filtering, purge. v0.2 roadmap fully delivered.",
-  "next_task_id": 11,
+  "quick_context": "All v0.2 tasks complete (T-001 through T-010). 196 tests passing. All 9 GitHub issues (#1-#9) closed. Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import, tag filtering, purge, /brain-status. v0.2 roadmap fully delivered. v0.3 roadmap defined: T-011 (confidence scoring), T-012 (lastAccessedAt + recency), T-013 (Markdown export), T-014 (dedupe-brain command).",
+  "next_task_id": 15,
   "tasks": {
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
@@ -50,7 +50,7 @@
       "created": "2026-02-24T00:00:00Z",
       "github_repo": "elvatis/openclaw-memory-brain",
       "github_issue": 9,
-      "completed": "2026-03-01T15:58:00.000Z"
+      "completed": "2026-03-01T14:59:38.257Z"
     },
     "T-002": {
       "title": "Implement unit test suite (#4)",
@@ -144,6 +144,46 @@
       "github_issue": 1,
       "github_repo": "elvatis/openclaw-memory-brain",
       "completed": "2026-03-01T14:20:00.000Z"
+    },
+    "T-011": {
+      "title": "Add confidence-scored auto-capture to reduce low-quality captures",
+      "status": "ready",
+      "priority": "high",
+      "depends_on": [],
+      "created": "2026-03-02T00:00:00Z",
+      "notes": "## Summary\n\nAuto-capture currently uses boolean matching: a message is captured if it contains any trigger keyword or auto-topic. This produces low-quality captures when triggers appear in passing references rather than intentional notes.\n\n## Scope\n\n- Add a scoreCapture(text, config) -> number function that computes a 0..1 confidence score:\n  - +0.4 if an explicit trigger keyword is matched\n  - +0.2 if an auto-topic keyword is matched\n  - +0.2 if message length >= 120 chars (likely substantive)\n  - +0.2 if message contains structural markers (lists, code blocks, numbered items)\n- Add a captureThreshold: number config option (default 0.4, range 0..1)\n- Only capture auto-detected messages when score >= captureThreshold\n- Explicit /remember-brain commands bypass scoring (always captured)\n- Expose captureScore in the meta field of stored items for debugging\n\n## Acceptance criteria\n\n- scoreCapture function exported and unit-tested with varied inputs\n- captureThreshold config option validated and documented\n- /brain-status output includes average capture score of last 20 items\n- Tests cover threshold boundary conditions",
+      "github_issue": 10,
+      "github_repo": "elvatis/openclaw-memory-brain"
+    },
+    "T-012": {
+      "title": "Track lastAccessedAt and boost recently-accessed memories in search",
+      "status": "ready",
+      "priority": "medium",
+      "depends_on": [],
+      "created": "2026-03-02T00:00:00Z",
+      "notes": "## Summary\n\nAll memory items have createdAt but there is no record of when an item was last retrieved. Search results are ranked purely by semantic similarity with no recency bias. Stale memories surface alongside frequently used ones with equal weight.\n\n## Scope\n\n- Add lastAccessedAt?: string field to MemoryItem (ISO timestamp)\n- Update /search-brain and brain_memory_search tool to set lastAccessedAt on returned items\n- Add a recency boost to search scoring:\n  adjustedScore = semanticScore * (1 + recencyBoost * accessRecencyFactor)\n  - recencyBoost config option (default 0.1, range 0..1)\n  - accessRecencyFactor = days since last access (capped at 90), normalized 0..1 inverted\n- Add --stale flag to /list-brain: /list-brain --stale [days] lists items not accessed in N days\n\n## Acceptance criteria\n\n- lastAccessedAt is set on search/list hit items\n- Recency boost is applied in search ranking\n- /list-brain --stale 30 returns items not accessed in 30+ days\n- Tests cover lastAccessedAt update and recency scoring\n- MemoryItem type update is backwards compatible (field is optional)",
+      "github_issue": 11,
+      "github_repo": "elvatis/openclaw-memory-brain"
+    },
+    "T-013": {
+      "title": "Add Markdown export format to /export-brain",
+      "status": "ready",
+      "priority": "medium",
+      "depends_on": [],
+      "created": "2026-03-02T00:00:00Z",
+      "notes": "## Summary\n\nThe /export-brain command exports items as a JSON envelope, which is machine-readable but not human-friendly. Users who want to review their brain memory in a text editor, Obsidian, or Notion have no easy way to do so.\n\n## Scope\n\n- Add --format md flag to /export-brain\n- When --format md is specified, output a Markdown document:\n  - Title: # Brain Memory Export - <date>\n  - Grouped by tags (alphabetical), with ## <tag> headings\n  - Items under each heading: - [<date>] <text>\n  - Items with multiple tags appear under each relevant tag heading\n  - Items with no tags appear under ## (untagged)\n- Default format remains JSON (no breaking change)\n- --tags filter is compatible with --format md\n\n## Acceptance criteria\n\n- /export-brain --format md returns valid Markdown\n- Tags are sorted alphabetically in output\n- /export-brain --tags arch --format md filters before grouping\n- Tests cover Markdown output format and tag grouping logic\n- README /export-brain section updated with --format md example",
+      "github_issue": 12,
+      "github_repo": "elvatis/openclaw-memory-brain"
+    },
+    "T-014": {
+      "title": "Add /dedupe-brain command for near-duplicate memory cleanup",
+      "status": "ready",
+      "priority": "low",
+      "depends_on": [],
+      "created": "2026-03-02T00:00:00Z",
+      "notes": "## Summary\n\nOver time, similar memories accumulate (same fact captured multiple times with slight wording variations). The existing dedupeThreshold config prevents new duplicates at capture time but does not clean up existing duplicates in the store.\n\n## Scope\n\n- Add /dedupe-brain [--dry-run] [--threshold 0.9] command\n- Algorithm:\n  1. Load all items\n  2. For each item, search for near-duplicates (score >= threshold)\n  3. In each duplicate cluster, keep the most recent item, delete the rest\n- Default threshold: dedupeThreshold config value, or 0.85 if not set\n- --dry-run flag: report what would be deleted without deleting\n- --threshold <value> flag: override threshold for this run\n- Output a summary: Found N duplicate clusters. Deleted M items. (X kept)\n\n## Acceptance criteria\n\n- /dedupe-brain --dry-run reports clusters without deleting\n- /dedupe-brain deletes older duplicates and keeps most recent\n- --threshold flag overrides config value\n- Tests cover cluster detection, dry-run, and deletion logic\n- README updated with /dedupe-brain command documentation",
+      "github_issue": 13,
+      "github_repo": "elvatis/openclaw-memory-brain"
     }
   }
 }
