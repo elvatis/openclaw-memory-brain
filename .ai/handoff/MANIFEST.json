@@ -45,7 +45,7 @@
     "T-001": {
       "title": "Define v0.2 roadmap items as issues and prioritize",
       "status": "done",
-      "priority": "medium",
+      "priority": "low",
       "depends_on": [],
       "created": "2026-02-24T00:00:00Z",
       "github_repo": "elvatis/openclaw-memory-brain",
@@ -95,7 +95,7 @@
     "T-006": {
       "title": "Add retention policy (#7)",
       "status": "done",
-      "priority": "low",
+      "priority": "medium",
       "depends_on": [
         "T-002"
       ],
@@ -148,7 +148,7 @@
     "T-011": {
       "title": "Add confidence-scored auto-capture to reduce low-quality captures",
       "status": "done",
-      "priority": "high",
+      "priority": "low",
       "depends_on": [],
       "created": "2026-03-02T00:00:00Z",
       "notes": "## Summary\n\nAuto-capture currently uses boolean matching: a message is captured if it contains any trigger keyword or auto-topic. This produces low-quality captures when triggers appear in passing references rather than intentional notes.\n\n## Scope\n\n- Add a scoreCapture(text, config) -> number function that computes a 0..1 confidence score:\n  - +0.4 if an explicit trigger keyword is matched\n  - +0.2 if an auto-topic keyword is matched\n  - +0.2 if message length >= 120 chars (likely substantive)\n  - +0.2 if message contains structural markers (lists, code blocks, numbered items)\n- Add a captureThreshold: number config option (default 0.4, range 0..1)\n- Only capture auto-detected messages when score >= captureThreshold\n- Explicit /remember-brain commands bypass scoring (always captured)\n- Expose captureScore in the meta field of stored items for debugging\n\n## Acceptance criteria\n\n- scoreCapture function exported and unit-tested with varied inputs\n- captureThreshold config option validated and documented\n- /brain-status output includes average capture score of last 20 items\n- Tests cover threshold boundary conditions",
@@ -159,7 +159,7 @@
     "T-012": {
       "title": "Track lastAccessedAt and boost recently-accessed memories in search",
       "status": "done",
-      "priority": "medium",
+      "priority": "low",
       "depends_on": [],
       "created": "2026-03-02T00:00:00Z",
       "notes": "## Summary\n\nAll memory items have createdAt but there is no record of when an item was last retrieved. Search results are ranked purely by semantic similarity with no recency bias. Stale memories surface alongside frequently used ones with equal weight.\n\n## Scope\n\n- Add lastAccessedAt?: string field to MemoryItem (ISO timestamp)\n- Update /search-brain and brain_memory_search tool to set lastAccessedAt on returned items\n- Add a recency boost to search scoring:\n  adjustedScore = semanticScore * (1 + recencyBoost * accessRecencyFactor)\n  - recencyBoost config option (default 0.1, range 0..1)\n  - accessRecencyFactor = days since last access (capped at 90), normalized 0..1 inverted\n- Add --stale flag to /list-brain: /list-brain --stale [days] lists items not accessed in N days\n\n## Acceptance criteria\n\n- lastAccessedAt is set on search/list hit items\n- Recency boost is applied in search ranking\n- /list-brain --stale 30 returns items not accessed in 30+ days\n- Tests cover lastAccessedAt update and recency scoring\n- MemoryItem type update is backwards compatible (field is optional)",
@@ -170,7 +170,7 @@
     "T-013": {
       "title": "Add Markdown export format to /export-brain",
       "status": "done",
-      "priority": "medium",
+      "priority": "low",
       "depends_on": [],
       "created": "2026-03-02T00:00:00Z",
       "notes": "## Summary\n\nThe /export-brain command exports items as a JSON envelope, which is machine-readable but not human-friendly. Users who want to review their brain memory in a text editor, Obsidian, or Notion have no easy way to do so.\n\n## Scope\n\n- Add --format md flag to /export-brain\n- When --format md is specified, output a Markdown document:\n  - Title: # Brain Memory Export - <date>\n  - Grouped by tags (alphabetical), with ## <tag> headings\n  - Items under each heading: - [<date>] <text>\n  - Items with multiple tags appear under each relevant tag heading\n  - Items with no tags appear under ## (untagged)\n- Default format remains JSON (no breaking change)\n- --tags filter is compatible with --format md\n\n## Acceptance criteria\n\n- /export-brain --format md returns valid Markdown\n- Tags are sorted alphabetically in output\n- /export-brain --tags arch --format md filters before grouping\n- Tests cover Markdown output format and tag grouping logic\n- README /export-brain section updated with --format md example",
