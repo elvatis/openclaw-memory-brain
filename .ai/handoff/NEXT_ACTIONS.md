@@ -10,29 +10,15 @@
 
 | State | Count |
 |-------|-------|
-| Done | 11 |
-| Ready | 3 |
+| Done | 12 |
+| Ready | 2 |
 | Blocked | 0 |
 
-v0.3 in progress. T-011 (confidence scoring) complete. 3 tasks remaining.
+v0.3 in progress. T-011 (confidence scoring) and T-012 (lastAccessedAt + recency) complete. 2 tasks remaining.
 
 ---
 
 ## Ready - Work These Next
-
-### T-012 [medium] - Track lastAccessedAt and boost recently-accessed memories in search
-- **Goal:** Record when each memory is last accessed and apply a recency boost to search ranking.
-- **Context:** Search results are ranked purely by semantic similarity. Stale memories surface alongside frequently used ones with equal weight. No record of when an item was last retrieved.
-- **What to do:**
-  - Add optional `lastAccessedAt?: string` field to MemoryItem (ISO timestamp)
-  - Update `/search-brain` and `brain_memory_search` tool to set `lastAccessedAt` on returned items
-  - Apply recency boost: `adjustedScore = semanticScore * (1 + recencyBoost * accessRecencyFactor)`
-  - Add `recencyBoost` config option (default 0.1, range 0..1)
-  - `accessRecencyFactor` = days since last access (capped at 90), normalized 0..1 inverted
-  - Add `--stale` flag to `/list-brain`: `/list-brain --stale [days]` lists items not accessed in N days
-- **Files:** `index.ts`, `tests/plugin.test.ts`, `README.md`, `openclaw.plugin.json`
-- **Definition of done:** `lastAccessedAt` is set on search/list hit items; recency boost applied; `/list-brain --stale 30` works; backwards compatible; tests pass.
-- **GitHub Issue:** #11
 
 ### T-013 [medium] - Add Markdown export format to /export-brain
 - **Goal:** Add `--format md` to `/export-brain` for human-readable Markdown output grouped by tags.
@@ -77,11 +63,11 @@ v0.3 in progress. T-011 (confidence scoring) complete. 3 tasks remaining.
 
 | Task | Date |
 |------|------|
-| T-011: Add confidence-scored auto-capture (#10) - scoreCapture function, captureThreshold config, meta.capture.score, avg score in /brain-status, 225 tests | 2026-03-02 |
+| T-012: Track lastAccessedAt and boost recently-accessed memories (#11) - lastAccessedAt field, recency boost (search.recencyBoost), /list-brain --stale, 244 tests | 2026-03-02 |
+| T-011: Add confidence-scored auto-capture (#10) - scoreCapture function, captureThreshold config, meta.capture.score, avg score in /brain-status | 2026-03-02 |
 | T-001: Define v0.2 roadmap items as issues and prioritize (#9) - 8 issues created, all implemented and closed | 2026-03-01 |
-| T-010: v0.2: per-channel capture policy (#1) - allow/deny lists, default policy, 15 tests | 2026-03-01 |
+| T-010: v0.2: per-channel capture policy (#1) - allow/deny lists, default policy | 2026-03-01 |
 | T-009: v0.2: dedupe + TTL (#2) - fixed test race conditions, verified feature complete | 2026-03-01 |
-| T-008: v0.2: explicit capture UX (#3) - trigger prefix stripping, --tags, id in confirmation | 2026-03-01 |
 
 ---
 
@@ -93,4 +79,4 @@ v0.3 in progress. T-011 (confidence scoring) complete. 3 tasks remaining.
 | Core dependency | `../openclaw-memory-core/src/` |
 | Plugin manifest | `openclaw.plugin.json` |
 | Package config | `package.json` |
-| Test suite | `tests/plugin.test.ts` (225 tests) |
+| Test suite | `tests/plugin.test.ts` (244 tests) |
