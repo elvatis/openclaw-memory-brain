@@ -3,11 +3,11 @@
   "project": "openclaw-memory-brain",
   "last_session": {
     "agent": "claude-code",
-    "session_id": "t001-roadmap-close-2026-03-01",
-    "timestamp": "2026-03-01T14:59:38.257Z",
-    "commit": "10fafd5",
+    "session_id": "t011-confidence-scoring-2026-03-02",
+    "timestamp": "2026-03-02T03:17:00.000Z",
+    "commit": "8cf56d1",
     "phase": "implementation",
-    "duration_minutes": 2
+    "duration_minutes": 15
   },
   "files": {
     "STATUS.md": {
@@ -15,8 +15,8 @@
       "summary": "v0.1.2 active, v0.2 roadmap defined with 5 GitHub issues"
     },
     "NEXT_ACTIONS.md": {
-      "updated": "2026-03-01T15:58:00Z",
-      "summary": "10 done, 0 ready, 0 blocked - all v0.2 tasks complete"
+      "updated": "2026-03-02T03:17:00Z",
+      "summary": "11 done, 3 ready, 0 blocked - T-011 confidence scoring complete"
     },
     "LOG.md": {
       "updated": "2026-02-27T00:00:00Z",
@@ -39,7 +39,7 @@
       "summary": "AAHP 5-phase pipeline with 4 agent roles"
     }
   },
-  "quick_context": "All v0.2 tasks complete (T-001 through T-010). 196 tests passing. All 9 GitHub issues (#1-#9) closed. Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import, tag filtering, purge, /brain-status. v0.2 roadmap fully delivered. v0.3 roadmap defined: T-011 (confidence scoring), T-012 (lastAccessedAt + recency), T-013 (Markdown export), T-014 (dedupe-brain command).",
+  "quick_context": "v0.2 complete (T-001 through T-010). v0.3 in progress: T-011 (confidence scoring) done. 225 tests passing. All 10 GitHub issues (#1-#10) closed. Features: trigger prefix stripping, /remember-brain --tags, confirmation with memory id, dedupe (dedupeThreshold), TTL (defaultTtlMs), per-channel policy, retention (maxAgeDays), export/import, tag filtering, purge, /brain-status, confidence-scored auto-capture (scoreCapture, captureThreshold, meta.capture.score). Remaining v0.3: T-012 (lastAccessedAt + recency), T-013 (Markdown export), T-014 (dedupe-brain command).",
   "next_task_id": 15,
   "tasks": {
     "T-001": {
@@ -147,13 +147,14 @@
     },
     "T-011": {
       "title": "Add confidence-scored auto-capture to reduce low-quality captures",
-      "status": "ready",
+      "status": "done",
       "priority": "high",
       "depends_on": [],
       "created": "2026-03-02T00:00:00Z",
       "notes": "## Summary\n\nAuto-capture currently uses boolean matching: a message is captured if it contains any trigger keyword or auto-topic. This produces low-quality captures when triggers appear in passing references rather than intentional notes.\n\n## Scope\n\n- Add a scoreCapture(text, config) -> number function that computes a 0..1 confidence score:\n  - +0.4 if an explicit trigger keyword is matched\n  - +0.2 if an auto-topic keyword is matched\n  - +0.2 if message length >= 120 chars (likely substantive)\n  - +0.2 if message contains structural markers (lists, code blocks, numbered items)\n- Add a captureThreshold: number config option (default 0.4, range 0..1)\n- Only capture auto-detected messages when score >= captureThreshold\n- Explicit /remember-brain commands bypass scoring (always captured)\n- Expose captureScore in the meta field of stored items for debugging\n\n## Acceptance criteria\n\n- scoreCapture function exported and unit-tested with varied inputs\n- captureThreshold config option validated and documented\n- /brain-status output includes average capture score of last 20 items\n- Tests cover threshold boundary conditions",
       "github_issue": 10,
-      "github_repo": "elvatis/openclaw-memory-brain"
+      "github_repo": "elvatis/openclaw-memory-brain",
+      "completed": "2026-03-02T03:17:00.000Z"
     },
     "T-012": {
       "title": "Track lastAccessedAt and boost recently-accessed memories in search",
