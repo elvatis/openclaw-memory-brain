@@ -90,6 +90,9 @@ export default function register(api: PluginApi) {
       defaultTtlMs?: number;
       captureThreshold?: number;
     };
+    search?: {
+      recencyBoost?: number;
+    };
     retention?: {
       maxAgeDays?: number;
     };
@@ -128,6 +131,9 @@ export default function register(api: PluginApi) {
 
   // T-011: Confidence-scored auto-capture threshold
   const captureThreshold: number = captureCfg.captureThreshold ?? 0.4;
+
+  // T-012: Recency boost for search scoring
+  const recencyBoost: number = Math.max(0, Math.min(1, cfg.search?.recencyBoost ?? 0.1));
 
   // Issue #3: Capture stats for /brain-status
   const stats: CaptureStats = {
@@ -225,6 +231,26 @@ export default function register(api: PluginApi) {
     api.logger?.error?.(`[memory-brain] TTL purge startup error: ${(err as Error).message}`);
   });
 
+  /**
+   * T-012: Compute access-recency factor for search ranking boost.
+   * Returns a value in 0..1 where 1 = just accessed, 0 = not accessed or >= 90 days ago.
+   */
+  function accessRecencyFactor(item: MemoryItem): number {
+    if (!item.lastAccessedAt) return 0;
+    const daysSince = (Date.now() - new Date(item.lastAccessedAt).getTime()) / 86_400_000;
+    if (daysSince < 0 || isNaN(daysSince)) return 0;
+    return Math.max(0, 1 - Math.min(daysSince, 90) / 90);
+  }
+
+  /** T-012: Set lastAccessedAt on retrieved items (fire-and-forget). */
+  function touchAccess(ids: string[]): void {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    for (const id of ids) {
+      store.update(id, { lastAccessedAt: now }).catch(() => {});
+    }
+  }
+
   // Tool: brain_memory_search
   api.registerTool({
     name: "brain_memory_search",
@@ -244,9 +270,20 @@ export default function register(api: PluginApi) {
       const limit = safeLimit(params['limit'], 5, 20);
       const tags = Array.isArray(params['tags']) ? (params['tags'] as string[]).filter(Boolean) : [];
       if (!q) return { hits: [] };
-      const hits = await store.search(q, { limit, ...(tags.length > 0 ? { tags } : {}) });
+      // T-012: Fetch extra candidates so recency re-ranking can surface boosted items
+      const fetchLimit = recencyBoost > 0 ? Math.min(limit * 3, 60) : limit;
+      const hits = await store.search(q, { limit: fetchLimit, ...(tags.length > 0 ? { tags } : {}) });
+      // T-012: Apply recency boost and re-sort
+      const boosted = hits.map((h) => ({
+        ...h,
+        score: h.score * (1 + recencyBoost * accessRecencyFactor(h.item)),
+      }));
+      boosted.sort((a, b) => b.score - a.score);
+      const topHits = boosted.slice(0, limit);
+      // T-012: Touch lastAccessedAt on returned items
+      touchAccess(topHits.map((h) => h.item.id));
       return {
-        hits: hits.map((h) => ({
+        hits: topHits.map((h) => ({
           score: h.score,
           id: h.item.id,
           createdAt: h.item.createdAt,
@@ -325,32 +362,68 @@ export default function register(api: PluginApi) {
         query = args.join(" ");
       }
       if (!query) return { text: "Usage: /search-brain <query> [--tags tag1,tag2] [limit]" };
-      const hits = await store.search(query, { limit, ...(tags.length > 0 ? { tags } : {}) });
+      // T-012: Fetch extra candidates for recency re-ranking
+      const fetchLimit = recencyBoost > 0 ? Math.min(limit * 3, 60) : limit;
+      const hits = await store.search(query, { limit: fetchLimit, ...(tags.length > 0 ? { tags } : {}) });
       if (hits.length === 0) return { text: `No brain memories found for: ${query}` };
-      const lines = hits.map((h, n) =>
+      // T-012: Apply recency boost and re-sort
+      const boosted = hits.map((h) => ({
+        ...h,
+        score: h.score * (1 + recencyBoost * accessRecencyFactor(h.item)),
+      }));
+      boosted.sort((a, b) => b.score - a.score);
+      const topHits = boosted.slice(0, limit);
+      // T-012: Touch lastAccessedAt on returned items
+      touchAccess(topHits.map((h) => h.item.id));
+      const lines = topHits.map((h, n) =>
         `${n + 1}. [score:${h.score.toFixed(2)}] ${h.item.text.slice(0, 120)}${h.item.text.length > 120 ? "\u2026" : ""}`
       );
       return { text: `Brain memory results for "${query}":\n${lines.join("\n")}` };
     },
   });
 
-  // Command: /list-brain [--tags tag1,tag2] [limit]
+  // Command: /list-brain [--tags tag1,tag2] [--stale days] [limit]
   api.registerCommand({
     name: "list-brain",
-    description: "List the most recent brain memory items. Use --tags tag1,tag2 to filter by tags (AND logic).",
-    usage: "/list-brain [--tags tag1,tag2] [limit]",
+    description: "List the most recent brain memory items. Use --tags tag1,tag2 to filter by tags (AND logic). Use --stale N to list items not accessed in N+ days.",
+    usage: "/list-brain [--tags tag1,tag2] [--stale days] [limit]",
     requireAuth: false,
     acceptsArgs: true,
     handler: async (ctx: CommandContext) => {
       const raw = String(ctx?.args ?? "").trim();
       const { tags, rest } = parseTags(raw);
-      const limit = safeLimit(rest, 10, 50);
-      const items = await store.list({ limit, ...(tags.length > 0 ? { tags } : {}) });
-      if (items.length === 0) return { text: "No brain memories stored yet." };
-      const lines = items.map((i, n) =>
+
+      // T-012: Parse --stale flag
+      const staleMatch = rest.match(/--stale\s+(\d+)/);
+      const staleDays = staleMatch ? Number(staleMatch[1]) : 0;
+      const afterStale = rest.replace(/--stale\s+\d+/, "").replace(/\s+/g, " ").trim();
+
+      const limit = safeLimit(afterStale, 10, 50);
+      const items = await store.list({ limit: staleDays > 0 ? 5000 : limit, ...(tags.length > 0 ? { tags } : {}) });
+
+      let filtered = items;
+      if (staleDays > 0) {
+        const cutoff = Date.now() - staleDays * 86_400_000;
+        filtered = items.filter((i) => {
+          if (!i.lastAccessedAt) return true; // never accessed counts as stale
+          const ts = new Date(i.lastAccessedAt).getTime();
+          return !isNaN(ts) && ts < cutoff;
+        });
+        filtered = filtered.slice(-limit);
+      }
+
+      if (filtered.length === 0) {
+        return { text: staleDays > 0 ? `No brain memories stale for ${staleDays}+ day(s).` : "No brain memories stored yet." };
+      }
+
+      // T-012: Touch lastAccessedAt on returned items
+      touchAccess(filtered.map((i) => i.id));
+
+      const lines = filtered.map((i, n) =>
         `${n + 1}. [${i.createdAt.slice(0, 10)}] ${i.text.slice(0, 120)}${i.text.length > 120 ? "\u2026" : ""}`
       );
-      return { text: `Brain memories (${items.length}):\n${lines.join("\n")}` };
+      const label = staleDays > 0 ? `Stale brain memories (${staleDays}+ days, ${filtered.length})` : `Brain memories (${filtered.length})`;
+      return { text: `${label}:\n${lines.join("\n")}` };
     },
   });
 
@@ -486,6 +559,9 @@ export default function register(api: PluginApi) {
           meta: obj.meta && typeof obj.meta === "object"
             ? obj.meta as Record<string, unknown> : undefined,
         };
+        // T-012: Preserve optional timestamp fields from import data
+        if (typeof obj.expiresAt === "string") item.expiresAt = obj.expiresAt;
+        if (typeof obj.lastAccessedAt === "string") item.lastAccessedAt = obj.lastAccessedAt;
 
         await store.add(item);
         imported++;
@@ -544,6 +620,7 @@ export default function register(api: PluginApi) {
         `  dedupeThreshold: ${dedupeThreshold || "disabled"}`,
         `  defaultTtlMs: ${defaultTtlMs || "disabled"}`,
         `  channelPolicy: ${channelAllow.length > 0 ? "allow=" + channelAllow.join(",") : channelDeny.length > 0 ? "deny=" + channelDeny.join(",") : "default=" + channelDefaultPolicy}`,
+        `  recencyBoost: ${recencyBoost}`,
         `  maxAgeDays: ${maxAgeDays || "disabled"}`,
       ];
       return { text: lines.join("\n") };

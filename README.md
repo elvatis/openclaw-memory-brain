@@ -52,23 +52,26 @@ Search brain memory items by semantic similarity. Optionally filter by tags (AND
 - `--tags tag1,tag2` - filter by tags, comma-separated (optional, AND logic)
 - `limit` - maximum number of results (optional, default 5, max 20)
 
-The trailing argument is interpreted as a limit if it is a bare number and more than one argument is present. A sole numeric argument is treated as the query itself. Returns scored results sorted by relevance.
+The trailing argument is interpreted as a limit if it is a bare number and more than one argument is present. A sole numeric argument is treated as the query itself. Returns scored results sorted by relevance. Recently-accessed items receive a configurable recency boost (see `search.recencyBoost`). Each returned item's `lastAccessedAt` timestamp is updated.
 
-### `/list-brain [--tags tag1,tag2] [limit]`
+### `/list-brain [--tags tag1,tag2] [--stale days] [limit]`
 
-List the most recent brain memory items. Optionally filter by tags (AND logic).
+List the most recent brain memory items. Optionally filter by tags (AND logic). Use `--stale N` to list items not accessed in N or more days.
 
 ```
 /list-brain
 /list-brain 20
 /list-brain --tags arch
 /list-brain --tags api,design 10
+/list-brain --stale 30
+/list-brain --tags arch --stale 60
 ```
 
 - `--tags tag1,tag2` - filter by tags, comma-separated (optional, AND logic)
+- `--stale days` - show only items not accessed in N+ days (optional). Items without a `lastAccessedAt` are treated as stale.
 - `limit` - maximum number of items to return (optional, default 10, max 50)
 
-Returns items in insertion order (oldest first), showing date and a truncated preview.
+Returns items in insertion order (oldest first), showing date and a truncated preview. Each returned item's `lastAccessedAt` timestamp is updated.
 
 ### `/tags-brain`
 
@@ -246,6 +249,9 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
             "autoTopics": ["entscheidung", "decision"]
           },
           "defaultTags": ["brain"],
+          "search": {
+            "recencyBoost": 0.1
+          },
           "retention": {
             "maxAgeDays": 90
           }
@@ -272,6 +278,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 | `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture (substring match, case-insensitive) |
 | `capture.captureThreshold` | number | `0.4` | Minimum confidence score (0-1) for auto-capture. Messages below this are skipped. 0 = disabled. |
 | `capture.autoTopics` | string[] | `["entscheidung", "decision"]` | Topic keywords that trigger capture when `requireExplicit` is false |
+| `search.recencyBoost` | number | `0.1` | Recency boost factor (0-1) for search scoring. Recently accessed items get a score boost proportional to how recently they were accessed (capped at 90 days). 0 = disabled. |
 
 ## Safety
 
@@ -285,7 +292,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (225 tests)
+npm test            # Run vitest test suite (244 tests)
 npm run test:watch  # Watch mode
 ```
 
@@ -314,6 +321,10 @@ The test suite covers all plugin functionality:
 - Logger verification (startup info, capture info, error on invalid path)
 - Command metadata (name, description, usage, requireAuth, acceptsArgs)
 - Confidence scoring (`scoreCapture` unit tests, threshold boundary conditions, integration with auto-capture, meta.capture.score storage, /brain-status avg score display)
+- lastAccessedAt tracking (set on search/list results, not set on new items, updates on subsequent access)
+- Recency boost (boost applied to recently accessed items, zero boost when disabled, default 0.1, clamped 0..1)
+- `/list-brain --stale` (stale item filtering, never-accessed items treated as stale, combined with --tags, limit support)
+- Backward compatibility (items without lastAccessedAt work in search, get zero recency boost)
 
 ### Dependencies
 

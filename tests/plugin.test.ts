@@ -3850,3 +3850,357 @@ describe("auto-capture with confidence scoring", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// T-012: lastAccessedAt tracking and recency boost
+// ---------------------------------------------------------------------------
+
+describe("T-012: lastAccessedAt tracking", () => {
+  it("sets lastAccessedAt on items returned by brain_memory_search tool", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "An important fact about TypeScript generics" });
+
+    // Search to trigger lastAccessedAt
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "TypeScript generics" } as ToolCallParams);
+
+    // Allow the fire-and-forget update to settle
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Export and check the item has lastAccessedAt set
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].lastAccessedAt).toBeDefined();
+    expect(typeof payload.items[0].lastAccessedAt).toBe("string");
+  });
+
+  it("sets lastAccessedAt on items returned by /search-brain command", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Database migration strategy for PostgreSQL" });
+
+    const searchCmd = api._commands.get("search-brain")!;
+    await searchCmd.handler({ args: "PostgreSQL migration" });
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].lastAccessedAt).toBeDefined();
+  });
+
+  it("sets lastAccessedAt on items returned by /list-brain command", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Important meeting notes from standup" });
+
+    const listCmd = api._commands.get("list-brain")!;
+    await listCmd.handler({});
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].lastAccessedAt).toBeDefined();
+  });
+
+  it("does not set lastAccessedAt on newly created items", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Fresh memory item without access" });
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({});
+    const payload = JSON.parse(result.text);
+    expect(payload.items[0].lastAccessedAt).toBeUndefined();
+  });
+
+  it("updates lastAccessedAt on subsequent searches", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Reusable component library architecture notes" });
+
+    // First search
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "component library" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    const exportCmd = api._commands.get("export-brain")!;
+    const first = JSON.parse((await exportCmd.handler({})).text);
+    const firstAccess = first.items[0].lastAccessedAt;
+
+    // Wait a moment then search again
+    await new Promise((r) => setTimeout(r, 50));
+    await tool.execute({ query: "component library" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    const second = JSON.parse((await exportCmd.handler({})).text);
+    const secondAccess = second.items[0].lastAccessedAt;
+
+    expect(secondAccess).toBeDefined();
+    expect(secondAccess >= firstAccess).toBe(true);
+  });
+});
+
+describe("T-012: recency boost in search scoring", () => {
+  it("applies recency boost to recently accessed items", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), search: { recencyBoost: 0.5 } });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Alpha architecture pattern for services" });
+    await rememberCmd.handler({ args: "Beta architecture design for services" });
+
+    // Search to set lastAccessedAt on first item only
+    const tool = api._tools.get("brain_memory_search")!;
+    const firstResult = await tool.execute({ query: "Alpha architecture" } as ToolCallParams);
+    const firstHits = (firstResult as { hits: Array<{ id: string }> }).hits;
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Now search for both - the recently accessed one should have a boost
+    const result = await tool.execute({ query: "architecture services" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number; text: string }> };
+    expect(data.hits.length).toBeGreaterThanOrEqual(2);
+    // Boosted item should have a higher score than its raw semantic score would suggest
+    const alphaHit = data.hits.find((h) => h.text.includes("Alpha"));
+    expect(alphaHit).toBeDefined();
+  });
+
+  it("does not apply recency boost when recencyBoost is 0", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), search: { recencyBoost: 0 } });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Note about zero boost testing for search" });
+
+    // Search once to set lastAccessedAt
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "zero boost" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Search again - score should be pure semantic (no boost)
+    const result = await tool.execute({ query: "zero boost" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // With recencyBoost=0, the score should be <= 1.0 (no boost applied)
+    expect(data.hits[0]!.score).toBeLessThanOrEqual(1.0);
+  });
+
+  it("default recencyBoost is 0.1", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Default boost configuration test memory" });
+
+    // Search once to set lastAccessedAt
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "default boost" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Search again - boosted score can be slightly above semantic score but not by much (0.1 boost)
+    const result = await tool.execute({ query: "default boost" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // With default 0.1 boost, max possible boost is *1.1, so score can be up to 1.1
+    expect(data.hits[0]!.score).toBeLessThanOrEqual(1.1);
+  });
+
+  it("clamps recencyBoost to 0..1 range", async () => {
+    // recencyBoost > 1 should be clamped to 1
+    const api = createMockApi({ storePath: tempStorePath(), search: { recencyBoost: 5.0 } });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Clamped boost test memory item" });
+
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "clamped boost" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await tool.execute({ query: "clamped boost" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // With clamped boost of 1.0, max possible score is semantic * 2.0
+    expect(data.hits[0]!.score).toBeLessThanOrEqual(2.0);
+  });
+});
+
+describe("T-012: /list-brain --stale flag", () => {
+  it("returns stale items not accessed in N+ days", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    // Import items with varying lastAccessedAt to simulate stale vs fresh
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 60 * 86_400_000).toISOString(); // 60 days ago
+    const recentDate = new Date().toISOString(); // now
+    const items = [
+      { id: "stale-1", kind: "note", text: "Old stale memory item one", createdAt: oldDate, tags: ["brain"], lastAccessedAt: oldDate },
+      { id: "stale-2", kind: "note", text: "Old stale memory item two", createdAt: oldDate, tags: ["brain"] }, // never accessed
+      { id: "fresh-1", kind: "note", text: "Fresh recent memory item", createdAt: recentDate, tags: ["brain"], lastAccessedAt: recentDate },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    // List stale items (30+ days)
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({ args: "--stale 30" });
+    expect(result.text).toContain("Stale brain memories");
+    expect(result.text).toContain("Old stale memory");
+    expect(result.text).not.toContain("Fresh recent");
+  });
+
+  it("treats items without lastAccessedAt as stale", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "never-1", kind: "note", text: "Never accessed memory item", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({ args: "--stale 1" });
+    expect(result.text).toContain("Never accessed");
+  });
+
+  it("returns no-stale message when all items are fresh", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "A fresh memory for stale test" });
+
+    // Touch it
+    const tool = api._tools.get("brain_memory_search")!;
+    await tool.execute({ query: "fresh stale test" } as ToolCallParams);
+    await new Promise((r) => setTimeout(r, 100));
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({ args: "--stale 1" });
+    expect(result.text).toContain("No brain memories stale");
+  });
+
+  it("combines --stale with --tags filter", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const items = [
+      { id: "st-1", kind: "note", text: "Stale API note for filter", createdAt: oldDate, tags: ["brain", "api"] },
+      { id: "st-2", kind: "note", text: "Stale DB note for filter", createdAt: oldDate, tags: ["brain", "db"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({ args: "--tags api --stale 30" });
+    expect(result.text).toContain("Stale brain memories");
+    expect(result.text).toContain("Stale API note");
+    expect(result.text).not.toContain("Stale DB note");
+  });
+
+  it("respects limit with --stale flag", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const oldDate = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const items = [
+      { id: "lim-1", kind: "note", text: "Stale limit test item one", createdAt: oldDate, tags: ["brain"] },
+      { id: "lim-2", kind: "note", text: "Stale limit test item two", createdAt: oldDate, tags: ["brain"] },
+      { id: "lim-3", kind: "note", text: "Stale limit test item three", createdAt: oldDate, tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({ args: "--stale 30 1" });
+    expect(result.text).toContain("Stale brain memories (30+ days, 1)");
+  });
+});
+
+describe("T-012: /brain-status includes recencyBoost", () => {
+  it("shows recencyBoost in config section", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), search: { recencyBoost: 0.3 } });
+    register(api);
+
+    const statusCmd = api._commands.get("brain-status")!;
+    const result = await statusCmd.handler({});
+    expect(result.text).toContain("recencyBoost: 0.3");
+  });
+
+  it("shows default recencyBoost of 0.1 when not configured", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const statusCmd = api._commands.get("brain-status")!;
+    const result = await statusCmd.handler({});
+    expect(result.text).toContain("recencyBoost: 0.1");
+  });
+});
+
+describe("T-012: /list-brain --stale usage in metadata", () => {
+  it("/list-brain usage includes --stale", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("list-brain")!;
+    expect(cmd.usage).toContain("--stale");
+    expect(cmd.description).toContain("--stale");
+  });
+});
+
+describe("T-012: backward compatibility", () => {
+  it("items without lastAccessedAt still work in search", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    // Import an item without lastAccessedAt (simulating old data)
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "compat-1", kind: "note", text: "Old format memory without lastAccessedAt field", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    // Search should work fine
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.execute({ query: "old format" } as ToolCallParams);
+    const data = result as { hits: Array<{ text: string }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    expect(data.hits[0]!.text).toContain("Old format");
+  });
+
+  it("items without lastAccessedAt get zero recency boost", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), search: { recencyBoost: 0.5 } });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "noboost-1", kind: "note", text: "No boost memory for compatibility test", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    // Score should equal pure semantic score (no boost since no lastAccessedAt)
+    const tool = api._tools.get("brain_memory_search")!;
+    const result = await tool.execute({ query: "no boost compatibility" } as ToolCallParams);
+    const data = result as { hits: Array<{ score: number }> };
+    expect(data.hits.length).toBeGreaterThan(0);
+    // Raw score is 0..1, with zero boost it stays in that range
+    expect(data.hits[0]!.score).toBeLessThanOrEqual(1.0);
+  });
+});

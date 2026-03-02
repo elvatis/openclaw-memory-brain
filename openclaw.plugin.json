@@ -81,6 +81,19 @@
         }
       },
       "defaultTags": { "type": "array", "items": { "type": "string" }, "default": ["brain"] },
+      "search": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recencyBoost": {
+            "type": "number",
+            "default": 0.1,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Recency boost factor (0-1) applied to search scoring. Recently accessed items get a score boost. 0 = disabled. Default 0.1."
+          }
+        }
+      },
       "retention": {
         "type": "object",
         "additionalProperties": false,
