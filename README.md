@@ -83,16 +83,18 @@ List all unique tags across all brain memory items, sorted alphabetically.
 
 Returns a comma-separated list of all tags with a count, e.g. `Tags (4): api, arch, brain, design`.
 
-### `/export-brain [--tags tag1,tag2]`
+### `/export-brain [--tags tag1,tag2] [--format json|md]`
 
-Export brain memory items as JSON for backup or portability. Optionally filter by tags.
+Export brain memory items as JSON or Markdown. Optionally filter by tags.
 
 ```
 /export-brain
 /export-brain --tags arch,design
+/export-brain --format md
+/export-brain --tags arch --format md
 ```
 
-Returns a JSON object with a version envelope:
+**JSON format (default)** - returns a JSON object with a version envelope:
 
 ```json
 {
@@ -104,6 +106,22 @@ Returns a JSON object with a version envelope:
 ```
 
 The `items` array contains full `MemoryItem` objects with all fields preserved. Copy the output to a file for backup, or pass it to `/import-brain` on another instance.
+
+**Markdown format** (`--format md`) - returns a human-readable document grouped by tags:
+
+```markdown
+# Brain Memory Export - 2026-03-02
+
+## arch
+
+- [2026-02-27] Architecture decision about modules
+
+## design
+
+- [2026-02-28] Design pattern for services
+```
+
+Items with multiple tags appear under each relevant tag heading. Items with no tags appear under `## (untagged)`. Tags are sorted alphabetically. The `--tags` filter is compatible with `--format md`.
 
 ### `/import-brain <json>`
 

@@ -906,6 +906,7 @@ describe("command metadata", () => {
     expect(cmd.description).toBeTruthy();
     expect(cmd.usage).toContain("/export-brain");
     expect(cmd.usage).toContain("--tags");
+    expect(cmd.usage).toContain("--format");
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(true);
   });
@@ -1258,6 +1259,136 @@ describe("/export-brain command", () => {
     const cmd = api._commands.get("export-brain")!;
     const result = await cmd.handler({});
     expect(() => JSON.parse(result.text)).not.toThrow();
+  });
+
+  it("exports Markdown with --format md", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Architecture decision about modules --tags arch" });
+    await rememberCmd.handler({ args: "Design pattern for services --tags design" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+
+    expect(result.text).toContain("# Brain Memory Export");
+    expect(result.text).toContain("## arch");
+    expect(result.text).toContain("## brain");
+    expect(result.text).toContain("## design");
+    expect(result.text).toContain("Architecture decision about modules");
+    expect(result.text).toContain("Design pattern for services");
+  });
+
+  it("groups items under each tag they belong to in Markdown", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Multi-tag memory item --tags arch,design" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+
+    // Item appears under both arch and design (and brain as default tag)
+    const archSection = result.text.indexOf("## arch");
+    const brainSection = result.text.indexOf("## brain");
+    const designSection = result.text.indexOf("## design");
+    expect(archSection).toBeGreaterThan(-1);
+    expect(brainSection).toBeGreaterThan(-1);
+    expect(designSection).toBeGreaterThan(-1);
+
+    // The item text should appear multiple times (once per tag group)
+    const matches = result.text.match(/Multi-tag memory item/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBe(3); // arch, brain, design
+  });
+
+  it("sorts tags alphabetically in Markdown output", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Zebra item --tags zebra" });
+    await rememberCmd.handler({ args: "Alpha item --tags alpha" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+
+    const alphaPos = result.text.indexOf("## alpha");
+    const brainPos = result.text.indexOf("## brain");
+    const zebraPos = result.text.indexOf("## zebra");
+    expect(alphaPos).toBeLessThan(brainPos);
+    expect(brainPos).toBeLessThan(zebraPos);
+  });
+
+  it("places untagged items under (untagged) heading in Markdown", async () => {
+    const api = createMockApi({ storePath: tempStorePath(), defaultTags: [] });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "An item with no tags at all" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+
+    expect(result.text).toContain("## (untagged)");
+    expect(result.text).toContain("An item with no tags at all");
+  });
+
+  it("combines --tags filter with --format md", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Arch note for markdown --tags arch" });
+    await rememberCmd.handler({ args: "Design note should not appear --tags design" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--tags arch --format md" });
+
+    expect(result.text).toContain("# Brain Memory Export");
+    expect(result.text).toContain("Arch note for markdown");
+    expect(result.text).not.toContain("Design note should not appear");
+  });
+
+  it("includes date prefix in Markdown item lines", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Dated memory item for export test" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+
+    // Check for date format [YYYY-MM-DD]
+    expect(result.text).toMatch(/- \[\d{4}-\d{2}-\d{2}\] Dated memory item/);
+  });
+
+  it("defaults to JSON format when --format is not specified", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Default format test memory" });
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({});
+
+    // Should be valid JSON (default behavior unchanged)
+    const payload = JSON.parse(result.text);
+    expect(payload.version).toBe(1);
+    expect(payload.items).toHaveLength(1);
+  });
+
+  it("returns empty message for --format md when no items exist", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("export-brain")!;
+    const result = await cmd.handler({ args: "--format md" });
+    expect(result.text).toBe("No brain memories to export.");
   });
 });
 

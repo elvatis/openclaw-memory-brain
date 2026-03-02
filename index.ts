@@ -159,6 +159,50 @@ export default function register(api: PluginApi) {
     return { tags, rest };
   }
 
+  function parseFormat(raw: string): { format: string; rest: string } {
+    const match = raw.match(/--format\s+(\S+)/);
+    if (!match) return { format: "json", rest: raw };
+    const format = match[1]!.trim().toLowerCase();
+    const rest = raw.replace(/--format\s+\S+/, "").replace(/\s+/g, " ").trim();
+    return { format, rest };
+  }
+
+  /** T-013: Convert memory items to a Markdown document grouped by tags. */
+  function toMarkdown(items: MemoryItem[], exportDate: string): string {
+    const lines: string[] = [];
+    lines.push(`# Brain Memory Export - ${exportDate}`);
+    lines.push("");
+
+    // Group items by tag
+    const groups = new Map<string, MemoryItem[]>();
+    for (const item of items) {
+      const tags = item.tags && item.tags.length > 0 ? item.tags : ["(untagged)"];
+      for (const tag of tags) {
+        if (!groups.has(tag)) groups.set(tag, []);
+        groups.get(tag)!.push(item);
+      }
+    }
+
+    // Sort tags alphabetically, but put (untagged) last
+    const sortedTags = [...groups.keys()].sort((a, b) => {
+      if (a === "(untagged)") return 1;
+      if (b === "(untagged)") return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const tag of sortedTags) {
+      lines.push(`## ${tag}`);
+      lines.push("");
+      for (const item of groups.get(tag)!) {
+        const date = item.createdAt.split("T")[0] ?? item.createdAt;
+        lines.push(`- [${date}] ${item.text}`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n").trimEnd() + "\n";
+  }
+
   /** Issue #1: Check if capture is allowed for the given channel/provider. */
   function isChannelAllowed(channel: string | undefined): boolean {
     const ch = (channel ?? "").toLowerCase();
@@ -461,18 +505,25 @@ export default function register(api: PluginApi) {
     },
   });
 
-  // Command: /export-brain [--tags tag1,tag2]
+  // Command: /export-brain [--tags tag1,tag2] [--format json|md]
   api.registerCommand({
     name: "export-brain",
-    description: "Export brain memory items as JSON for backup or portability. Use --tags tag1,tag2 to filter.",
-    usage: "/export-brain [--tags tag1,tag2]",
+    description: "Export brain memory items as JSON or Markdown. Use --tags tag1,tag2 to filter, --format md for Markdown output.",
+    usage: "/export-brain [--tags tag1,tag2] [--format json|md]",
     requireAuth: false,
     acceptsArgs: true,
     handler: async (ctx: CommandContext) => {
       const raw = String(ctx?.args ?? "").trim();
       const { tags } = parseTags(raw);
+      const { format } = parseFormat(raw);
       const items = await store.list({ limit: 5000, ...(tags.length > 0 ? { tags } : {}) });
       if (items.length === 0) return { text: "No brain memories to export." };
+
+      if (format === "md") {
+        const exportDate = new Date().toISOString().split("T")[0]!;
+        return { text: toMarkdown(items, exportDate) };
+      }
+
       const payload = {
         version: 1,
         exportedAt: new Date().toISOString(),
