@@ -70,6 +70,13 @@
             "default": 0,
             "minimum": 0,
             "description": "Default TTL in milliseconds for new memory items. 0 = no expiry. Items past their TTL are excluded from reads and purged on startup."
+          },
+          "captureThreshold": {
+            "type": "number",
+            "default": 0.4,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Minimum confidence score (0-1) for auto-capture. Messages scoring below this threshold are skipped. Default 0.4."
           }
         }
       },

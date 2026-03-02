@@ -8,7 +8,7 @@ import type {
   MessageEvent,
   MessageEventContext,
 } from "@elvatis_com/openclaw-memory-core";
-import register from "../index.js";
+import register, { scoreCapture } from "../index.js";
 
 // ---------------------------------------------------------------------------
 // Mock PluginApi factory
@@ -443,7 +443,7 @@ describe("auto-capture (message_received hook)", () => {
     const storePath = tempStorePath();
     const api = createMockApi({
       storePath,
-      capture: { requireExplicit: false },
+      capture: { requireExplicit: false, captureThreshold: 0 },
     });
     register(api);
 
@@ -641,7 +641,7 @@ describe("custom configuration", () => {
     const storePath = tempStorePath();
     const api = createMockApi({
       storePath,
-      capture: { requireExplicit: false, minChars: 10, autoTopics: ["URGENT"] },
+      capture: { requireExplicit: false, minChars: 10, autoTopics: ["URGENT"], captureThreshold: 0 },
     });
     register(api);
 
@@ -2245,7 +2245,7 @@ describe("auto-capture - capture metadata", () => {
     const storePath = tempStorePath();
     const api = createMockApi({
       storePath,
-      capture: { requireExplicit: false, minChars: 10 },
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0 },
     });
     register(api);
 
@@ -3284,7 +3284,7 @@ describe("explicit capture UX - trigger prefix stripping", () => {
     const storePath = tempStorePath();
     const api = createMockApi({
       storePath,
-      capture: { requireExplicit: false, minChars: 10 },
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0 },
     });
     register(api);
 
@@ -3367,7 +3367,7 @@ describe("/brain-status command", () => {
     const storePath = tempStorePath();
     const api = createMockApi({
       storePath,
-      capture: { requireExplicit: false, minChars: 10 },
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0 },
     });
     register(api);
 
@@ -3481,5 +3481,372 @@ describe("/brain-status command", () => {
     expect(cmd.usage).toContain("/brain-status");
     expect(cmd.requireAuth).toBe(false);
     expect(cmd.acceptsArgs).toBe(false);
+  });
+
+  it("shows captureThreshold in config section", async () => {
+    const api = createMockApi({
+      storePath: tempStorePath(),
+      capture: { captureThreshold: 0.6 },
+    });
+    register(api);
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("captureThreshold: 0.6");
+  });
+
+  it("shows skipped low-score stat", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.8 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic-only match on a short message: score = 0.2 (topic) which is < 0.8 threshold
+    await handler(
+      { content: "This decision is made for the project", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Skipped (low score): 1");
+  });
+
+  it("shows average capture score of stored items", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.2 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Capture a topic message (score 0.2)
+    await handler(
+      { content: "This decision is important for the team", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Avg capture score (last 20):");
+    // Should not be 0.00 since we captured a scored item
+    expect(result.text).not.toContain("Avg capture score (last 20): 0.00");
+  });
+
+  it("shows 0.00 avg score when no scored items exist", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("brain-status")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Avg capture score (last 20): 0.00");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-011: scoreCapture function unit tests
+// ---------------------------------------------------------------------------
+
+describe("scoreCapture() - confidence scoring", () => {
+  const defaultConfig = {
+    explicitTriggers: ["remember this", "merke dir", "notiere", "keep this"],
+    autoTopics: ["entscheidung", "decision"],
+  };
+
+  it("returns 0 for text with no signals", () => {
+    const score = scoreCapture("Hello world, this is a short message.", defaultConfig);
+    expect(score).toBe(0);
+  });
+
+  it("returns 0.4 for explicit trigger match only", () => {
+    const score = scoreCapture("remember this: some note", defaultConfig);
+    expect(score).toBeCloseTo(0.4, 5);
+  });
+
+  it("returns 0.2 for auto-topic match only", () => {
+    const score = scoreCapture("This decision matters", defaultConfig);
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0.2 for length >= 120 only", () => {
+    const longText = "a".repeat(120);
+    const score = scoreCapture(longText, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0 for length < 120 with no other signals", () => {
+    const shortText = "a".repeat(119);
+    const score = scoreCapture(shortText, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBe(0);
+  });
+
+  it("returns 0.2 for bullet list structural marker", () => {
+    const text = "- item one\n- item two";
+    const score = scoreCapture(text, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0.2 for code block structural marker", () => {
+    const text = "Here is code:\n```\nconst x = 1;\n```";
+    const score = scoreCapture(text, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0.2 for numbered list structural marker", () => {
+    const text = "1. First step\n2. Second step";
+    const score = scoreCapture(text, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0.2 for numbered list with closing paren", () => {
+    const text = "1) First step\n2) Second step";
+    const score = scoreCapture(text, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("returns 0.2 for asterisk list structural marker", () => {
+    const text = "* item one\n* item two";
+    const score = scoreCapture(text, { explicitTriggers: [], autoTopics: [] });
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+
+  it("combines trigger + topic = 0.6", () => {
+    const text = "remember this: an important decision about architecture";
+    const score = scoreCapture(text, defaultConfig);
+    expect(score).toBeCloseTo(0.6, 5);
+  });
+
+  it("combines trigger + length = 0.6", () => {
+    const text = "remember this: " + "a".repeat(120);
+    const score = scoreCapture(text, defaultConfig);
+    expect(score).toBeCloseTo(0.6, 5);
+  });
+
+  it("combines topic + length + structure = 0.6", () => {
+    const text = "This decision about the project is very important.\n- point one\n- point two\n" + "a".repeat(60);
+    const score = scoreCapture(text, defaultConfig);
+    expect(score).toBeCloseTo(0.6, 5);
+  });
+
+  it("caps at 1.0 when all signals match", () => {
+    const text = "remember this: This decision about architecture is critical.\n- step one\n- step two\n" + "a".repeat(120);
+    const score = scoreCapture(text, defaultConfig);
+    expect(score).toBe(1.0);
+  });
+
+  it("is case-insensitive for trigger matching", () => {
+    const score = scoreCapture("REMEMBER THIS: note", defaultConfig);
+    expect(score).toBeCloseTo(0.4, 5);
+  });
+
+  it("is case-insensitive for topic matching", () => {
+    const score = scoreCapture("This DECISION matters", defaultConfig);
+    expect(score).toBeCloseTo(0.2, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T-011: Confidence scoring integration with auto-capture
+// ---------------------------------------------------------------------------
+
+describe("auto-capture with confidence scoring", () => {
+  it("captures message when score meets threshold", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, captureThreshold: 0.4 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Explicit trigger = 0.4 score, meets threshold
+    await handler(
+      { content: "remember this: important architecture note for the project", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("skips message when score is below threshold", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.5 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic match only = 0.2 score, below 0.5 threshold
+    await handler(
+      { content: "This decision is interesting for now", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("captures topic message with multiple signals above threshold", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.4 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic (0.2) + length >= 120 (0.2) = 0.4, meets threshold
+    const longText = "This decision about architecture is critical for the entire project and must be documented. " + "x".repeat(40);
+    await handler(
+      { content: longText, from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("stores captureScore in meta.capture.score", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { minChars: 10, captureThreshold: 0.4 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "remember this: important note about the system for testing", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    // Export to see the meta field
+    const exportCmd = api._commands.get("export-brain")!;
+    const result = await exportCmd.handler({ args: "" });
+    const payload = JSON.parse(result.text);
+    expect(payload.items.length).toBe(1);
+    expect(payload.items[0].meta.capture.score).toBeCloseTo(0.4, 5);
+  });
+
+  it("explicit /remember-brain bypasses scoring (always captured)", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { captureThreshold: 0.99 },
+    });
+    register(api);
+
+    // /remember-brain should always work regardless of threshold
+    const cmd = api._commands.get("remember-brain")!;
+    const result = await cmd.handler({ args: "hi" });
+    expect(result.text).toMatch(/Saved brain memory \[id=.+\]\./);
+  });
+
+  it("uses default threshold of 0.4 when not configured", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic only = 0.2, below default threshold 0.4
+    await handler(
+      { content: "This decision is quick for the team", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("threshold 0 captures everything that matches trigger/topic", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic only = 0.2, but threshold is 0 so it should be captured
+    await handler(
+      { content: "This decision is quick for the team", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("threshold boundary: score exactly equals threshold captures the message", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.2 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    // Topic match = 0.2, threshold = 0.2, should capture (>=)
+    await handler(
+      { content: "This decision is final for this sprint cycle", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    const listCmd = api._commands.get("list-brain")!;
+    const result = await listCmd.handler({});
+    expect(result.text).toContain("Brain memories (1)");
+  });
+
+  it("logs low-score skip with score and threshold details", async () => {
+    const storePath = tempStorePath();
+    const api = createMockApi({
+      storePath,
+      capture: { requireExplicit: false, minChars: 10, captureThreshold: 0.5 },
+    });
+    register(api);
+
+    const handlers = api._handlers.get("message_received") ?? [];
+    const handler = handlers[0]!;
+
+    await handler(
+      { content: "This decision is not important enough", from: "user" },
+      { messageProvider: "slack", sessionId: "s1" },
+    );
+
+    expect(api.logger!.info).toHaveBeenCalledWith(
+      expect.stringContaining("skipped low-score capture"),
+    );
   });
 });

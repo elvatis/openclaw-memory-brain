@@ -22,7 +22,50 @@ interface CaptureStats {
   skippedShort: number;
   skippedChannel: number;
   skippedDuplicate: number;
+  skippedLowScore: number;
   totalMessages: number;
+}
+
+/** Configuration passed to scoreCapture. */
+export interface ScoreCaptureConfig {
+  explicitTriggers: string[];
+  autoTopics: string[];
+}
+
+/**
+ * Compute a 0..1 confidence score for auto-capture eligibility.
+ *
+ * Signals:
+ *   +0.4 if an explicit trigger keyword is matched
+ *   +0.2 if an auto-topic keyword is matched
+ *   +0.2 if message length >= 120 chars (likely substantive)
+ *   +0.2 if message contains structural markers (lists, code blocks, numbered items)
+ */
+export function scoreCapture(text: string, config: ScoreCaptureConfig): number {
+  let score = 0;
+  const lower = text.toLowerCase();
+
+  // +0.4 for explicit trigger match
+  if (config.explicitTriggers.some((t) => lower.includes(t.toLowerCase()))) {
+    score += 0.4;
+  }
+
+  // +0.2 for auto-topic match
+  if (config.autoTopics.some((t) => lower.includes(t.toLowerCase()))) {
+    score += 0.2;
+  }
+
+  // +0.2 for substantive length
+  if (text.length >= 120) {
+    score += 0.2;
+  }
+
+  // +0.2 for structural markers (code blocks, bullet lists, numbered lists)
+  if (/```/.test(text) || /^[\s]*[-*]\s/m.test(text) || /^\s*\d+[.)]\s/m.test(text)) {
+    score += 0.2;
+  }
+
+  return Math.min(score, 1);
 }
 
 export default function register(api: PluginApi) {
@@ -45,6 +88,7 @@ export default function register(api: PluginApi) {
       };
       dedupeThreshold?: number;
       defaultTtlMs?: number;
+      captureThreshold?: number;
     };
     retention?: {
       maxAgeDays?: number;
@@ -82,6 +126,9 @@ export default function register(api: PluginApi) {
   const dedupeThreshold: number = captureCfg.dedupeThreshold ?? 0;
   const defaultTtlMs: number = captureCfg.defaultTtlMs ?? 0;
 
+  // T-011: Confidence-scored auto-capture threshold
+  const captureThreshold: number = captureCfg.captureThreshold ?? 0.4;
+
   // Issue #3: Capture stats for /brain-status
   const stats: CaptureStats = {
     explicitCaptures: 0,
@@ -89,6 +136,7 @@ export default function register(api: PluginApi) {
     skippedShort: 0,
     skippedChannel: 0,
     skippedDuplicate: 0,
+    skippedLowScore: 0,
     totalMessages: 0,
   };
 
@@ -459,6 +507,23 @@ export default function register(api: PluginApi) {
     acceptsArgs: false,
     handler: async () => {
       const items = await store.list({ limit: 5000 });
+
+      // T-011: Compute average capture score of the last 20 items that have a score
+      const scoredItems = items
+        .filter((i) => {
+          const meta = i.meta as Record<string, unknown> | undefined;
+          const capture = meta?.capture as Record<string, unknown> | undefined;
+          return typeof capture?.score === "number";
+        })
+        .slice(-20);
+      const avgScore = scoredItems.length > 0
+        ? scoredItems.reduce((sum, i) => {
+            const meta = i.meta as Record<string, unknown>;
+            const capture = meta.capture as Record<string, unknown>;
+            return sum + (capture.score as number);
+          }, 0) / scoredItems.length
+        : 0;
+
       const lines: string[] = [
         `Brain Memory Status`,
         `---`,
@@ -470,9 +535,12 @@ export default function register(api: PluginApi) {
         `  Skipped (too short): ${stats.skippedShort}`,
         `  Skipped (channel policy): ${stats.skippedChannel}`,
         `  Skipped (duplicate): ${stats.skippedDuplicate}`,
+        `  Skipped (low score): ${stats.skippedLowScore}`,
+        `  Avg capture score (last 20): ${avgScore.toFixed(2)}`,
         `Config:`,
         `  requireExplicit: ${requireExplicit}`,
         `  minChars: ${minChars}`,
+        `  captureThreshold: ${captureThreshold}`,
         `  dedupeThreshold: ${dedupeThreshold || "disabled"}`,
         `  defaultTtlMs: ${defaultTtlMs || "disabled"}`,
         `  channelPolicy: ${channelAllow.length > 0 ? "allow=" + channelAllow.join(",") : channelDeny.length > 0 ? "deny=" + channelDeny.join(",") : "default=" + channelDefaultPolicy}`,
@@ -505,8 +573,17 @@ export default function register(api: PluginApi) {
       const isExplicit = includesAny(content, explicitTriggers);
       const isTopic = includesAny(content, autoTopics);
 
+      // T-011: Compute confidence score and apply threshold
+      const captureScore = scoreCapture(content, { explicitTriggers, autoTopics });
+
       if (requireExplicit && !isExplicit) return;
       if (!requireExplicit && !isExplicit && !isTopic) return;
+
+      if (captureScore < captureThreshold) {
+        stats.skippedLowScore++;
+        api.logger?.info?.(`[memory-brain] skipped low-score capture (score=${captureScore.toFixed(2)}, threshold=${captureThreshold})`);
+        return;
+      }
 
       // Issue #3: Strip trigger prefix from captured text
       const cleanedContent = isExplicit ? stripTriggerPrefix(content) : content;
@@ -532,7 +609,7 @@ export default function register(api: PluginApi) {
           conversationId: ctx?.sessionId,
         },
         meta: {
-          capture: { explicit: isExplicit, topic: isTopic },
+          capture: { explicit: isExplicit, topic: isTopic, score: captureScore },
           ...(r.hadSecrets ? { redaction: { hadSecrets: true, matches: r.matches } } : {})
         }
       };

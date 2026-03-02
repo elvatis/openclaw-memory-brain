@@ -193,11 +193,29 @@ A message is captured when **all** of the following are true:
 
 1. Message content is not empty
 2. Message length >= `minChars` (default: 80 characters)
-3. At least one of:
+3. Channel is allowed by channel policy
+4. At least one of:
    - The message contains an **explicit trigger** (e.g. "remember this", "keep this")
    - `requireExplicit` is `false` AND the message contains an **auto-topic** keyword (e.g. "decision")
+5. The message's **confidence score** >= `captureThreshold` (default: 0.4)
+6. The message is not a near-duplicate (when `dedupeThreshold` > 0)
 
 Convention: brain-memory should **not** silently store large amounts of chat. The recommended default is `requireExplicit: true`.
+
+### Confidence scoring
+
+Each candidate message receives a 0-1 confidence score based on weighted signals:
+
+| Signal | Weight | Condition |
+|--------|--------|-----------|
+| Explicit trigger | +0.4 | Message contains an explicit trigger keyword |
+| Auto-topic | +0.2 | Message contains an auto-topic keyword |
+| Substantive length | +0.2 | Message length >= 120 characters |
+| Structural markers | +0.2 | Message contains code blocks, bullet lists, or numbered lists |
+
+The score is capped at 1.0. Messages scoring below `captureThreshold` (default 0.4) are skipped. Explicit `/remember-brain` commands bypass scoring entirely.
+
+The confidence score is stored in `meta.capture.score` on each auto-captured item for debugging. The `/brain-status` command shows the average score of the last 20 captured items.
 
 ### Trigger matching
 
@@ -223,6 +241,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
           "capture": {
             "minChars": 80,
             "requireExplicit": true,
+            "captureThreshold": 0.4,
             "explicitTriggers": ["merke dir", "remember this", "notiere", "keep this"],
             "autoTopics": ["entscheidung", "decision"]
           },
@@ -251,6 +270,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 | `capture.minChars` | number | `80` | Minimum message length for auto-capture (10+) |
 | `capture.requireExplicit` | boolean | `true` | When true, only explicit triggers cause capture (recommended) |
 | `capture.explicitTriggers` | string[] | see above | Phrases that trigger explicit capture (substring match, case-insensitive) |
+| `capture.captureThreshold` | number | `0.4` | Minimum confidence score (0-1) for auto-capture. Messages below this are skipped. 0 = disabled. |
 | `capture.autoTopics` | string[] | `["entscheidung", "decision"]` | Topic keywords that trigger capture when `requireExplicit` is false |
 
 ## Safety
@@ -265,7 +285,7 @@ All configuration is provided via `openclaw.plugin.json` or the plugin config bl
 ```bash
 npm install
 npm run build       # TypeScript type-check (noEmit, strict mode)
-npm test            # Run vitest test suite (168 tests)
+npm test            # Run vitest test suite (225 tests)
 npm run test:watch  # Watch mode
 ```
 
@@ -293,6 +313,7 @@ The test suite covers all plugin functionality:
 - Edge cases (sole numeric arg, whitespace-only arg, limit clamping, multiple captures)
 - Logger verification (startup info, capture info, error on invalid path)
 - Command metadata (name, description, usage, requireAuth, acceptsArgs)
+- Confidence scoring (`scoreCapture` unit tests, threshold boundary conditions, integration with auto-capture, meta.capture.score storage, /brain-status avg score display)
 
 ### Dependencies
 
