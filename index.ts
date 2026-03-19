@@ -15,6 +15,35 @@ import {
   type MessageEventContext,
 } from "@elvatis_com/openclaw-memory-core";
 
+/**
+ * Normalize text for similarity comparison.
+ * Lower-cases, strips punctuation, collapses whitespace.
+ */
+export function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Compute Jaccard similarity between two strings using word sets.
+ * Returns a value in [0, 1] where 1 = identical word sets.
+ */
+export function jaccardSimilarity(a: string, b: string): number {
+  const wordsA = new Set(normalizeText(a).split(" ").filter(Boolean));
+  const wordsB = new Set(normalizeText(b).split(" ").filter(Boolean));
+  if (wordsA.size === 0 && wordsB.size === 0) return 1;
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+  let intersection = 0;
+  for (const w of wordsA) {
+    if (wordsB.has(w)) intersection++;
+  }
+  const union = wordsA.size + wordsB.size - intersection;
+  return intersection / union;
+}
+
 /** Internal counters for /brain-status. */
 interface CaptureStats {
   explicitCaptures: number;
@@ -674,6 +703,94 @@ export default function register(api: PluginApi) {
         `  recencyBoost: ${recencyBoost}`,
         `  maxAgeDays: ${maxAgeDays || "disabled"}`,
       ];
+      return { text: lines.join("\n") };
+    },
+  });
+
+  // Command: /dedupe-brain [--threshold <0-1>] [--dry-run] [--delete]
+  api.registerCommand({
+    name: "dedupe-brain",
+    description: "Find near-duplicate brain memory entries using Jaccard word-set similarity. Defaults to --dry-run. Use --delete to remove duplicates (keeps the oldest copy).",
+    usage: "/dedupe-brain [--threshold <0.0-1.0>] [--dry-run] [--delete]",
+    requireAuth: true,
+    acceptsArgs: true,
+    handler: async (ctx: CommandContext) => {
+      const raw = String(ctx?.args ?? "").trim();
+
+      // Parse --threshold N (accepts negative for clamping; rejects non-numeric)
+      const thresholdMatch = raw.match(/--threshold\s+(-?[\d.]+)/);
+      let threshold = 0.85;
+      if (thresholdMatch) {
+        const parsed = parseFloat(thresholdMatch[1]!);
+        if (isNaN(parsed)) return { text: "Invalid --threshold value. Use a number between 0.0 and 1.0." };
+        threshold = Math.min(1, Math.max(0, parsed));
+      } else if (/--threshold\s+\S/.test(raw)) {
+        // --threshold was given but with a non-numeric value
+        return { text: "Invalid --threshold value. Use a number between 0.0 and 1.0." };
+      }
+
+      // Parse --delete flag (explicit deletion mode)
+      const doDelete = /--delete\b/.test(raw);
+      // Default is dry-run unless --delete is explicitly given
+      const dryRun = !doDelete;
+
+      const items = await store.list({ limit: 5000 });
+      if (items.length === 0) return { text: "No brain memories stored yet." };
+
+      // Find duplicate pairs: O(n^2) but acceptable for reasonable store sizes (<= 5000 items).
+      // For each pair (i, j) with j > i, compute Jaccard similarity.
+      // Track which items are already flagged as duplicates (to avoid cascading).
+      const duplicateIds = new Set<string>();
+      const pairs: Array<{ original: MemoryItem; duplicate: MemoryItem; score: number }> = [];
+
+      for (let i = 0; i < items.length; i++) {
+        if (duplicateIds.has(items[i]!.id)) continue;
+        for (let j = i + 1; j < items.length; j++) {
+          if (duplicateIds.has(items[j]!.id)) continue;
+          const sim = jaccardSimilarity(items[i]!.text, items[j]!.text);
+          if (sim >= threshold) {
+            // Keep the older item (lower createdAt), mark newer as duplicate
+            const older = items[i]!.createdAt <= items[j]!.createdAt ? items[i]! : items[j]!;
+            const newer = older === items[i] ? items[j]! : items[i]!;
+            duplicateIds.add(newer.id);
+            pairs.push({ original: older, duplicate: newer, score: sim });
+          }
+        }
+      }
+
+      if (pairs.length === 0) {
+        return { text: `No near-duplicates found (threshold=${threshold.toFixed(2)}, ${items.length} item(s) scanned).` };
+      }
+
+      // Build report
+      const lines: string[] = [
+        dryRun
+          ? `Dry run: found ${pairs.length} near-duplicate pair(s) (threshold=${threshold.toFixed(2)}).`
+          : `Deleting ${pairs.length} near-duplicate(s) (threshold=${threshold.toFixed(2)}).`,
+        "",
+      ];
+
+      for (const { original, duplicate, score } of pairs) {
+        const origDate = original.createdAt.slice(0, 10);
+        const dupDate = duplicate.createdAt.slice(0, 10);
+        const origPreview = original.text.slice(0, 80) + (original.text.length > 80 ? "\u2026" : "");
+        const dupPreview = duplicate.text.slice(0, 80) + (duplicate.text.length > 80 ? "\u2026" : "");
+        lines.push(`sim=${score.toFixed(2)}`);
+        lines.push(`  KEEP [${origDate}] ${origPreview}`);
+        lines.push(`  ${dryRun ? "WOULD DELETE" : "DELETED"} [${dupDate}] ${dupPreview}`);
+        if (!dryRun) {
+          await store.delete(duplicate.id);
+        }
+      }
+
+      if (dryRun) {
+        lines.push("");
+        lines.push(`Run /dedupe-brain --delete to remove the ${pairs.length} duplicate(s).`);
+      } else {
+        lines.push("");
+        lines.push(`Removed ${pairs.length} duplicate(s). ${items.length - pairs.length} item(s) remaining.`);
+      }
+
       return { text: lines.join("\n") };
     },
   });

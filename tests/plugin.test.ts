@@ -8,6 +8,7 @@ import type {
   MessageEvent,
   MessageEventContext,
 } from "@elvatis_com/openclaw-memory-core";
+import { jaccardSimilarity, normalizeText } from "../index.js";
 import register, { scoreCapture } from "../index.js";
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe("register() - plugin setup", () => {
-  it("registers all nine commands and one tool", () => {
+  it("registers all ten commands and one tool", () => {
     const api = createMockApi({ storePath: tempStorePath() });
     register(api);
 
@@ -95,6 +96,7 @@ describe("register() - plugin setup", () => {
     expect(api._commands.has("import-brain")).toBe(true);
     expect(api._commands.has("purge-brain")).toBe(true);
     expect(api._commands.has("brain-status")).toBe(true);
+    expect(api._commands.has("dedupe-brain")).toBe(true);
     expect(api._tools.has("brain_memory_search")).toBe(true);
   });
 
@@ -128,7 +130,7 @@ describe("register() - plugin setup", () => {
     register(api);
 
     // Plugin should still register everything with defaults
-    expect(api._commands.size).toBe(9);
+    expect(api._commands.size).toBe(10);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -2628,7 +2630,7 @@ describe("null and undefined pluginConfig", () => {
     const api = createMockApi();
     (api as unknown as Record<string, unknown>).pluginConfig = null;
     register(api);
-    expect(api._commands.size).toBe(9);
+    expect(api._commands.size).toBe(10);
     expect(api._tools.size).toBe(1);
   });
 
@@ -2636,7 +2638,7 @@ describe("null and undefined pluginConfig", () => {
     const api = createMockApi();
     (api as unknown as Record<string, unknown>).pluginConfig = undefined;
     register(api);
-    expect(api._commands.size).toBe(9);
+    expect(api._commands.size).toBe(10);
     expect(api._tools.size).toBe(1);
   });
 });
@@ -4333,5 +4335,439 @@ describe("T-012: backward compatibility", () => {
     expect(data.hits.length).toBeGreaterThan(0);
     // Raw score is 0..1, with zero boost it stays in that range
     expect(data.hits[0]!.score).toBeLessThanOrEqual(1.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeText and jaccardSimilarity unit tests
+// ---------------------------------------------------------------------------
+
+describe("normalizeText", () => {
+  it("lower-cases input", () => {
+    expect(normalizeText("Hello WORLD")).toBe("hello world");
+  });
+
+  it("strips punctuation", () => {
+    expect(normalizeText("Hello, world!")).toBe("hello world");
+  });
+
+  it("collapses multiple spaces", () => {
+    expect(normalizeText("a   b    c")).toBe("a b c");
+  });
+
+  it("trims leading/trailing whitespace", () => {
+    expect(normalizeText("  hello  ")).toBe("hello");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(normalizeText("")).toBe("");
+  });
+
+  it("handles punctuation-only input", () => {
+    expect(normalizeText("!!!...")).toBe("");
+  });
+});
+
+describe("jaccardSimilarity", () => {
+  it("returns 1.0 for identical strings", () => {
+    expect(jaccardSimilarity("hello world", "hello world")).toBe(1);
+  });
+
+  it("returns 0.0 for completely different strings", () => {
+    expect(jaccardSimilarity("apple banana", "cat dog")).toBe(0);
+  });
+
+  it("returns 1.0 for two empty strings", () => {
+    expect(jaccardSimilarity("", "")).toBe(1);
+  });
+
+  it("returns 0.0 when one string is empty and the other is not", () => {
+    expect(jaccardSimilarity("hello", "")).toBe(0);
+    expect(jaccardSimilarity("", "hello")).toBe(0);
+  });
+
+  it("returns partial similarity for overlapping word sets", () => {
+    // "the quick brown fox" vs "the quick lazy fox": 3/5 = 0.6
+    const sim = jaccardSimilarity("the quick brown fox", "the quick lazy fox");
+    expect(sim).toBeCloseTo(3 / 5, 5);
+  });
+
+  it("is symmetric", () => {
+    const a = "TypeScript architecture decision for the project";
+    const b = "architecture decision project for the team";
+    expect(jaccardSimilarity(a, b)).toBeCloseTo(jaccardSimilarity(b, a), 10);
+  });
+
+  it("is case-insensitive", () => {
+    expect(jaccardSimilarity("Hello World", "hello world")).toBe(1);
+  });
+
+  it("ignores punctuation in comparison", () => {
+    expect(jaccardSimilarity("Hello, world!", "hello world")).toBe(1);
+  });
+
+  it("returns high similarity for near-duplicate sentences", () => {
+    const a = "The database migration strategy is complete and ready for review";
+    const b = "The database migration strategy is complete and ready for deployment";
+    const sim = jaccardSimilarity(a, b);
+    expect(sim).toBeGreaterThan(0.7);
+  });
+
+  it("returns low similarity for unrelated sentences", () => {
+    const a = "TypeScript strict mode configuration for monorepo projects";
+    const b = "French cuisine recipes with ingredients and cooking times";
+    const sim = jaccardSimilarity(a, b);
+    expect(sim).toBeLessThan(0.2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /dedupe-brain command tests
+// ---------------------------------------------------------------------------
+
+describe("/dedupe-brain command", () => {
+  it("is registered with correct metadata", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    expect(cmd.name).toBe("dedupe-brain");
+    expect(cmd.description).toBeTruthy();
+    expect(cmd.usage).toContain("/dedupe-brain");
+    expect(cmd.usage).toContain("--dry-run");
+    expect(cmd.usage).toContain("--delete");
+    expect(cmd.requireAuth).toBe(true);
+    expect(cmd.acceptsArgs).toBe(true);
+  });
+
+  it("returns empty-store message when no items exist", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No brain memories stored yet");
+  });
+
+  it("reports no duplicates when all items are unique", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "TypeScript generics and type inference" });
+    await rememberCmd.handler({ args: "French cuisine with garlic and herbs" });
+    await rememberCmd.handler({ args: "Running marathon training schedule" });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No near-duplicates found");
+    expect(result.text).toContain("3 item(s) scanned");
+  });
+
+  it("detects near-duplicate entries in dry-run mode (default)", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "dup-a", kind: "note", text: "The database migration strategy is complete and ready", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "dup-b", kind: "note", text: "The database migration strategy is complete and ready", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Dry run");
+    expect(result.text).toContain("1 near-duplicate pair");
+    expect(result.text).toContain("KEEP");
+    expect(result.text).toContain("WOULD DELETE");
+    // Items should NOT be deleted in dry-run mode
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (2)");
+  });
+
+  it("dry-run is the default when neither --dry-run nor --delete is provided", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "drdef-a", kind: "note", text: "Architecture decision about microservices", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "drdef-b", kind: "note", text: "Architecture decision about microservices", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("Dry run");
+    expect(result.text).toContain("WOULD DELETE");
+
+    // Still 2 items
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (2)");
+  });
+
+  it("deletes duplicate entries when --delete flag is set", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "del-a", kind: "note", text: "The frontend React component library is ready for use", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "del-b", kind: "note", text: "The frontend React component library is ready for use", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+      { id: "del-c", kind: "note", text: "Completely different note about cooking recipes", createdAt: "2026-01-03T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--delete" });
+    expect(result.text).toContain("Deleting 1 near-duplicate");
+    expect(result.text).toContain("DELETED");
+    expect(result.text).toContain("2 item(s) remaining");
+
+    // Verify only 2 items remain
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (2)");
+    expect(listResult.text).toContain("component library");
+    expect(listResult.text).toContain("cooking recipes");
+  });
+
+  it("keeps the older item when deleting duplicates", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "keep-newer-1", kind: "note", text: "Keep the older version of this duplicate entry here", createdAt: "2026-02-01T00:00:00Z", tags: ["brain"] },
+      { id: "keep-older-1", kind: "note", text: "Keep the older version of this duplicate entry here", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--delete" });
+
+    // The older item (Jan 01) should be kept, the newer (Feb 01) should be deleted
+    expect(result.text).toContain("KEEP");
+    const keepLineIdx = result.text.indexOf("KEEP");
+    expect(result.text.slice(keepLineIdx)).toContain("2026-01-01");
+  });
+
+  it("uses custom threshold when --threshold is set", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "thresh-a", kind: "note", text: "TypeScript project setup and configuration for team", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "thresh-b", kind: "note", text: "TypeScript project configuration setup", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    // High threshold - probably no match
+    const cmd = api._commands.get("dedupe-brain")!;
+    const highResult = await cmd.handler({ args: "--threshold 0.99" });
+    expect(highResult.text).toContain("No near-duplicates found");
+
+    // Low threshold - should match
+    const lowResult = await cmd.handler({ args: "--threshold 0.3" });
+    expect(lowResult.text).toContain("near-duplicate pair");
+  });
+
+  it("reports threshold used in output", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Some unique note about architecture" });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--threshold 0.75" });
+    expect(result.text).toContain("0.75");
+  });
+
+  it("shows similarity score for each pair", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "score-a", kind: "note", text: "Backend API service design and architecture", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "score-b", kind: "note", text: "Backend API service design and architecture", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toMatch(/sim=\d+\.\d+/);
+  });
+
+  it("handles multiple duplicate pairs", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "multi-a1", kind: "note", text: "First set duplicate note A", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "multi-a2", kind: "note", text: "First set duplicate note A", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+      { id: "multi-b1", kind: "note", text: "Second set duplicate note B", createdAt: "2026-01-03T00:00:00Z", tags: ["brain"] },
+      { id: "multi-b2", kind: "note", text: "Second set duplicate note B", createdAt: "2026-01-04T00:00:00Z", tags: ["brain"] },
+      { id: "multi-c",  kind: "note", text: "Unique note about something completely different", createdAt: "2026-01-05T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("2 near-duplicate pair");
+  });
+
+  it("deletes multiple duplicates in one run", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "delm-a1", kind: "note", text: "Deploy pipeline configuration for CI CD systems", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "delm-a2", kind: "note", text: "Deploy pipeline configuration for CI CD systems", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+      { id: "delm-b1", kind: "note", text: "Database backup and restore procedures guide", createdAt: "2026-01-03T00:00:00Z", tags: ["brain"] },
+      { id: "delm-b2", kind: "note", text: "Database backup and restore procedures guide", createdAt: "2026-01-04T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--delete" });
+    expect(result.text).toContain("Deleting 2 near-duplicate");
+
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (2)");
+  });
+
+  it("does not delete anything in default (dry-run) mode even when duplicates are found", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "nodelete-a", kind: "note", text: "Important infrastructure note about the project", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "nodelete-b", kind: "note", text: "Important infrastructure note about the project", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    await cmd.handler({}); // dry-run by default
+
+    // Both items should still be present
+    const listCmd = api._commands.get("list-brain")!;
+    const listResult = await listCmd.handler({});
+    expect(listResult.text).toContain("Brain memories (2)");
+  });
+
+  it("dry-run output includes a reminder to use --delete", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "remind-a", kind: "note", text: "Reminder test duplicate entry one here", createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "remind-b", kind: "note", text: "Reminder test duplicate entry one here", createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("--delete");
+  });
+
+  it("handles invalid --threshold value gracefully", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--threshold abc" });
+    expect(result.text).toContain("Invalid --threshold value");
+  });
+
+  it("clamps threshold above 1.0 to 1.0", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Some note for threshold clamping test" });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({ args: "--threshold 5.0" });
+    expect(result.text).toContain("1.00"); // clamped threshold shown
+  });
+
+  it("clamps threshold below 0.0 to 0.0 and shows 0.00 in output", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Single item store for negative threshold test" });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    // --threshold -0.5 should be clamped to 0.00 and shown in the no-duplicates message
+    const result = await cmd.handler({ args: "--threshold -0.5" });
+    expect(result.text).toContain("0.00");
+  });
+
+  it("has requireAuth set to true", () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    expect(cmd.requireAuth).toBe(true);
+  });
+
+  it("shows date prefix in KEEP and WOULD DELETE lines", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const items = [
+      { id: "date-a", kind: "note", text: "Date display test duplicate entry one", createdAt: "2026-03-01T00:00:00Z", tags: ["brain"] },
+      { id: "date-b", kind: "note", text: "Date display test duplicate entry one", createdAt: "2026-03-15T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toMatch(/\[2026-03-\d{2}\]/);
+  });
+
+  it("works on a single-item store (no pairs possible)", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const rememberCmd = api._commands.get("remember-brain")!;
+    await rememberCmd.handler({ args: "Sole note in the store for dedupe test" });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    expect(result.text).toContain("No near-duplicates found");
+  });
+
+  it("truncates long text in preview lines", async () => {
+    const api = createMockApi({ storePath: tempStorePath() });
+    register(api);
+
+    const importCmd = api._commands.get("import-brain")!;
+    const longText = "word ".repeat(50).trim();
+    const items = [
+      { id: "long-a", kind: "note", text: longText, createdAt: "2026-01-01T00:00:00Z", tags: ["brain"] },
+      { id: "long-b", kind: "note", text: longText, createdAt: "2026-01-02T00:00:00Z", tags: ["brain"] },
+    ];
+    await importCmd.handler({ args: JSON.stringify(items) });
+
+    const cmd = api._commands.get("dedupe-brain")!;
+    const result = await cmd.handler({});
+    // Long text should be truncated with ellipsis
+    expect(result.text).toContain("\u2026");
+    // Should NOT contain the full 250-char string
+    expect(result.text).not.toContain(longText);
   });
 });
